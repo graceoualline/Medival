@@ -121,7 +121,7 @@ def calculate_distance(seq1, seq2):
     except (IndexError, ValueError, subprocess.CalledProcessError) as e:
         print(f"Error running skani: {str(e)}")
         print(f"Common issue is the fasta files given to skani do not exist")
-        print("Please make sure the skani_db portion of the mgediva database was create correctly.")
+        print("Please make sure the skani_db portion of the medival database was create correctly.")
         return "unk:skani_err"  # Return 0 in case of errors
 
 def check_cache(a, b, cache):
@@ -224,17 +224,17 @@ def filter_blat(inf, outf, q_species, index, tree, q_seq, blat_db, minIdentity, 
 if __name__ == "__main__":
     # Check if the correct number of command-line arguments is provided
     if len(sys.argv) != 8:
-        print("Usage: python3 filter_blat.py <input psl file> <output .tsv file> <query species (make sure _ instead of space)> <mgediva_db> <div tree> <input sequence> <minIdentity>")
+        print("Usage: python3 filter_blat.py <input psl file> <output .tsv file> <query species (make sure _ instead of space)> <medival_db> <div tree> <input sequence> <minIdentity>")
         sys.exit(1)
 
     input_file = sys.argv[1]
     output_file = sys.argv[2]
     q_species = sys.argv[3]
-    mgediva_db = sys.argv[4]
+    medival_db = sys.argv[4]
     tree = Divergence_Tree_Preprocessed(sys.argv[5])
     q_seq = sys.argv[6]
-    index = load_hash_table(f'{mgediva_db}/mgediva_db_index.pkl')
-    blat_db = f'{mgediva_db}/blat_2bit_db'
+    index = load_hash_table(f'{medival_db}/medival_db_index.pkl')
+    blat_db = f'{medival_db}/blat_2bit_db'
     minIdentity = float(sys.argv[7])
-    skani_db = f'{mgediva_db}/skani_db'
+    skani_db = f'{medival_db}/skani_db'
     filter_blat(input_file, output_file, q_species, index, tree, q_seq, blat_db, minIdentity, skani_db)

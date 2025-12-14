@@ -124,12 +124,12 @@ def make_skani_db(split_fasta_dir, skani_db_dir, total_seqs):
     
     Args:
         split_fasta_dir: Directory containing FASTA files to process
-        output_dir: Base output directory where mgediva_skani_db will be created
+        output_dir: Base output directory where medival_skani_db will be created
     """
     #split_fasta_dir = Path(split_fasta_dir)
     
     # Create the skani database directory
-    #skani_db_dir = output_dir / "mgediva_skani_db"
+    #skani_db_dir = output_dir / "medival_skani_db"
     print("\n" + "="*60)
     print("STEP 4: Make Skani DB")
     print("="*60)
@@ -301,7 +301,7 @@ def make_ooc(input_directory):
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
-        print("Usage: python make_mgediva_db.py <input.fasta> <output_dir> <max_bil_bp>")
+        print("Usage: python make_medival_db.py <input.fasta> <output_dir> <max_bil_bp>")
         sys.exit(1)
     
     input_fasta = sys.argv[1] #full_database = "/usr1/shared/gtdb_combined.fa"
@@ -347,4 +347,4 @@ if __name__ == "__main__":
     print("="*60)
     
 
-# python3 /usr1/gouallin/blat/blat_pipeline/make_mgediva_db.py /usr1/shared/gtdb_combined.fa gtdb_smart_split_fa 2
+# python3 /usr1/gouallin/blat/blat_pipeline/make_medival_db.py /usr1/shared/gtdb_combined.fa gtdb_smart_split_fa 2

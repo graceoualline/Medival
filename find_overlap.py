@@ -183,12 +183,12 @@ if __name__ == "__main__":
     # Check if the correct number of command-line arguments is provided
     #
     if len(sys.argv) != 4:
-        print("Usage: python3 find_overlap.py <file of blatdiver output> <output file name> <mgediva_db>")
+        print("Usage: python3 find_overlap.py <file of blatdiver output> <output file name> <medival_db>")
         sys.exit(1)
     input_file = sys.argv[1]
     output = sys.argv[2]
     skani_db= f"{sys.argv[3]}/skani_db"
-    gtdb_index = load_hash_table(f"{sys.argv[3]}/mgediva_db_index.pkl")
+    gtdb_index = load_hash_table(f"{sys.argv[3]}/medival_db_index.pkl")
 
     rows = compress(input_file)
     find_overlap(rows, output, skani_db, gtdb_index)

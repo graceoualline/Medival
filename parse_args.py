@@ -23,7 +23,7 @@ class Config:
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="""Take a FASTA file and run it through MGEdivA.\n
+        description="""Take a FASTA file and run it through medival.\n
         
         Config File Usage:\n
     You can create a YAML config file to set default values for all parameters.\n
@@ -33,10 +33,10 @@ def parse_args():
         
     Example commands:\n
     # Use config file with command-line overrides\n
-    python mgediva.py --config my_config.yaml --threads 46 --chunk 100000\n
+    python medival.py --config my_config.yaml --threads 46 --chunk 100000\n
     
     # Use only command-line arguments (traditional way)\n
-    python mgediva.py -q input.fasta -o output -d database -tr tree -i index -k kraken"""
+    python medival.py -q input.fasta -o output -d database -tr tree -i index -k kraken"""
     )
     parser.add_argument(
         "--config", type=str, help="Path to a YAML config file with default arguments.")
@@ -45,13 +45,13 @@ def parse_args():
     parser.add_argument(
         "-o", "--output", help="Name of your output directory")
     parser.add_argument(
-        "-d", "--database", help="Path to the mgediva database")
+        "-d", "--database", help="Path to the medival database")
     parser.add_argument(
         "-tr", "--tree", help="Directory containing The Time Tree of Life tree (TimeTree_v5_Final.nwk), and its preprocessed files")
     parser.add_argument(
         "-k", "--kraken", help="Path to Kraken2 database")
     parser.add_argument(
-        "-i", "--index", type = str, help="(Optional) Index of sequences in your db, of their species, length, and tree leaf names. Default is the one built in the mgediva database. Can specify a different index here if you want to manually define each sequence's species.")
+        "-i", "--index", type = str, help="(Optional) Index of sequences in your db, of their species, length, and tree leaf names. Default is the one built in the medival database. Can specify a different index here if you want to manually define each sequence's species.")
     parser.add_argument(
         "-t", "--threads", type=int, help="(Optional) Number of threads to use. Highly recommend a large number of threads (default: 1)")
     parser.add_argument(
@@ -229,7 +229,7 @@ def merge_config_and_args(args, config_data=None):
 
     if merged_config['index'] == 'default_placeholder' or merged_config['index'] is None:
         if merged_config['database']:
-            merged_config['index'] = f"{merged_config['database']}/mgediva_db_index.pkl"
+            merged_config['index'] = f"{merged_config['database']}/medival_db_index.pkl"
         else:
             merged_config['index'] = None
 

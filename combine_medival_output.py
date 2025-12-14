@@ -1,4 +1,4 @@
-# this will combine all of the mgediva output files into one big one so that we can do analysis on it
+# this will combine all of the medival output files into one big one so that we can do analysis on it
 # should only be used at the end of everything so that there is less computation since it is N^2 to filter
 # is only for franken arg analysis
 
@@ -8,7 +8,7 @@ import sys
 import os
 
 def adjust_and_merge_tsvs(chunk_dir, chunk_size, output_file, to_combine):
-    #ex to_combine = *mgediva_output.tsv
+    #ex to_combine = *medival_output.tsv
     all_files = sorted(glob.glob(os.path.join(chunk_dir, "*" + to_combine)))
     #print(chunk_dir)
     #print(to_combine)
@@ -62,7 +62,7 @@ def adjust_and_merge_tsvs(chunk_dir, chunk_size, output_file, to_combine):
     
 if __name__ == "__main__":
     if len(sys.argv) != 5:
-        print("Usage: python3 combine_mgediva_output.py <mgediva_output_directory> <chunk_size> <which files to combine ex. *mgediva_output.tsv> <output_file>")
+        print("Usage: python3 combine_medival_output.py <medival_output_directory> <chunk_size> <which files to combine ex. *medival_output.tsv> <output_file>")
         sys.exit(1)
 
     chunk_dir = sys.argv[1]

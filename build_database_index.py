@@ -178,18 +178,18 @@ def lookup_tree_leaf_name(hash_table, seq_id):
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
-        print("Usage: python3 build_database_index.py <mgediva_built_db> <species_file> <tree>")
-        print("  the mgediva_db that was built by make_mgediva_db.py")
+        print("Usage: python3 build_database_index.py <medival_built_db> <species_file> <tree>")
+        print("  the medival_db that was built by make_medival_db.py")
         print("  species_file: Existing species annotation file")
         print("  tree: Time Tree of Life .nwk file")
         sys.exit(1)
-    mgediva_db = sys.argv[1]
+    medival_db = sys.argv[1]
     species_file = sys.argv[2]
 
     seq_lengths = Path(f"{sys.argv[1]}/seq_lengths.tsv")
     if not seq_lengths.exists():
-        raise FileNotFoundError(f"File does not exist: {seq_lengths}, please make sure make_mgediva_db.py was run correctly, or manually make a file with the first column being seq_id, and second column seq_length.")
-    final_output = f"{sys.argv[1]}/mgediva_db_index.pkl"
+        raise FileNotFoundError(f"File does not exist: {seq_lengths}, please make sure make_medival_db.py was run correctly, or manually make a file with the first column being seq_id, and second column seq_length.")
+    final_output = f"{sys.argv[1]}/medival_db_index.pkl"
     tree = Divergence_Tree_Preprocessed(sys.argv[3])
 
     print("\n" + "="*60)
@@ -215,5 +215,5 @@ if __name__ == "__main__":
     print(f"Hash index saved to {final_output}")
     print("="*60)
     print("DATABASE INDEX CREATION COMPLETED!")
-    print(f"Once you've ensured your build database and index is functional, you can delete {mgediva_db}/blat_fasta_db and {seq_lengths} to save space.")
+    print(f"Once you've ensured your build database and index is functional, you can delete {medival_db}/blat_fasta_db and {seq_lengths} to save space.")
     print("="*60)

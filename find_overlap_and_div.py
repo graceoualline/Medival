@@ -108,12 +108,12 @@ if __name__ == "__main__":
     # Check if the correct number of command-line arguments is provided
     #
     if len(sys.argv) != 5:
-        print("Usage: python3 find_overlap_and_div.py <file of blatdiver output> <output file name> <tree> <mgediva_db>")
+        print("Usage: python3 find_overlap_and_div.py <file of blatdiver output> <output file name> <tree> <medival_db>")
         sys.exit(1)
     input_file = sys.argv[1]
     output = sys.argv[2]
     tree = Divergence_Tree_Preprocessed(sys.argv[3])
-    index = load_hash_table(f"{sys.argv[4]}/mgediva_db_index.pkl")
+    index = load_hash_table(f"{sys.argv[4]}/medival_db_index.pkl")
     skani_db = f"{sys.argv[4]}/skani_db"
 
     #print("Compressing")
