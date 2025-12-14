@@ -154,7 +154,7 @@ index: medival_gtdb_db/medival_db_index.pkl
 overlap_filter: false
 overlap_div_filter: false
 remove: false
-species: null  # Auto-detect with Kraken2
+species: None  # Auto-detect with Kraken2
 minScore: 30
 minIdentity: 95 
 ```
@@ -319,7 +319,7 @@ This index is crucial to the pipeline's speed.
 4. **Kraken Database:** For taxonomic classification
 
 ## Phylogenetic Tree
-We use the Time Tree of Life to calculate divergence times between species. From the original .nwk TimeTree file, we preprocessed the tree (as shown in this Google Colab notebook (link)
+We use the Time Tree of Life to calculate divergence times between species. From the original .nwk TimeTree file, we preprocessed the tree (as shown in this [Google Colab notebook](https://colab.research.google.com/drive/14xnM2kPtqHvnQi7cvWDLJedbZ0uWtqMy?usp=sharing)
 ) to allow finding the closest common ancestor in O(1) time. If a new .nwk file from the Time Tree becomes available, this notebook can be used to generate updated indexes and preprocess the tree for efficient queries. (cite timetree)
 
 ## Performance Tips
