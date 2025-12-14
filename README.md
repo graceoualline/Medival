@@ -1,4 +1,4 @@
-# medival
+# Medival
 
 **M**obile (Genetic) **E**lement finder using **DIV**ergence and **AL**ignment. A parallelized sequence alignment tool for detecting Mobile Genetic Elements (MGEs) using BLAT and phylogenetic divergence analysis.
 ## Overview
