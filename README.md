@@ -12,7 +12,7 @@ git clone https://github.com/graceoualline/medival.git
 cd medival
 ```
 Install supporting files and databases here: 
-TODO: please upload all files that are in /usr1/shared/medival_github_large_files.
+**WARNING: We dont have a place where the database has been uploaded yet. Please email me and I'll directly transfer files to you: grace.oualline@gmail.com**
 You should have the following files:
 ```
 ├── divergence_tree.tar.gz
