@@ -20,7 +20,10 @@ from combine_medival_output import *
 from find_overlap_and_div import *
 from parse_args import *
 from build_database_index import *
-import re
+import time
+from concurrent.futures import ThreadPoolExecutor
+import threading
+# import re
 
 def combine_and_cleanup_psl_files(args):
     header_lines = 5
@@ -54,6 +57,7 @@ def run_div_filter(job):
 def run_specified_filter(job):
     """Dispatch the correct function based on job type."""
     job_type, args = job
+    #print(f"Processing {job}", flush=True)
     try:
         if job_type == "overlap":
             infile, outfile, database, index = args
@@ -236,28 +240,63 @@ def combine_all_results(c: Config):
                 for _ in pool.imap_unordered(run_combine_results, jobs):
                     pbar.update()
 
+def write_species_to_file(sequence_id, species, species_file, mode='a'):
+    """
+    Write a sequence ID and its species to the auto-generated species file.
+    
+    Args:
+        sequence_id: The sequence identifier
+        species: The species name
+        species_file: Path to the species file
+        mode: 'a' for append, 'w' for write
+    """
+    try:
+        with open(species_file, mode) as f:
+            f.write(f"{sequence_id}\t{species}\n")
+    except Exception as e:
+        print(f"Error writing to species file {species_file}: {e}")
+
+def detect_species(record, config):
+    with tempfile.NamedTemporaryFile(prefix=f"{record.id}_tmp", mode="w", delete=False, suffix=".fa") as tmp_fasta:
+        SeqIO.write(record, tmp_fasta, "fasta")
+        tmp_fasta_path = tmp_fasta.name
+    species = get_q_species(tmp_fasta_path, config.kraken_db)
+    os.remove(tmp_fasta_path)
+    return species
+
 def process_single_record(record, config):
     chunk_jobs = []
     tmp_fastas = []
-    
     # Get the length of the sequence
     seq_len = len(record.seq)
     record.id = record.id.replace("'", "").replace('"', "")
     # Get the species of the sequence
-    if config.species is None:
+    if config.species_mode == "auto":
         try:
-            with tempfile.NamedTemporaryFile(prefix=f"{record.id}_tmp", mode="w", delete=False, suffix=".fa") as tmp_fasta:
-                SeqIO.write(record, tmp_fasta, "fasta")
-                tmp_fasta_path = tmp_fasta.name
-            species = get_q_species(tmp_fasta_path, config.kraken_db)
-            os.remove(tmp_fasta_path)
+            species = detect_species(record, config)
+            #print(f"Species of {record.id}: {species}")
+            write_species_to_file(record.id, species, config.speciesFile, mode='a')
         except Exception as e:
             print(f"Issue extracting species for {record.id}: {e}")
             species = "unclassified"
+            write_species_to_file(record.id, species, config.speciesFile, mode='a')
+    elif config.species_mode == 'file':
+        if record.id in config.seq_species_dict:
+            species = config.seq_species_dict[record.id]
+        else:
+            try:
+                print(f"Warning: {record.id} not found in species file {config.speciesFile}. Auto-detecting using Kraken...")
+                species = detect_species(record, config)
+                #print(f"Species of {record.id}: {species}")
+                write_species_to_file(record.id, species, config.speciesFile, mode='a')
+            except Exception as e:
+                print(f"Issue auto-detecting species for {record.id}: {e}")
+                species = "unclassified"
+                write_species_to_file(record.id, species, config.speciesFile, mode='a')
+            
     else:
         species = config.species
-    
-    print(f"Species of {record.id}: {species}")
+    #print(f"Species of {record.id}: {species}")
     
     # If the sequence length is greater than the chunk size we want
     if seq_len > config.chunk_size:
@@ -289,13 +328,30 @@ def process_single_record(record, config):
         
         # If it is smaller than the chunk size, just add it
         chunk_jobs.append((record, 0, record.id, species, tmp_fasta_path))
-    
     return chunk_jobs, tmp_fastas
 
 def prepare_jobs_parallel(c: Config, n_processes=None):
     if n_processes is None:
         n_processes = min(c.max_threads, mp.cpu_count())
     
+    # If auto mode, initialize the species file (clear it if it exists)
+    if c.species_mode == 'auto':
+        try:
+            # Create parent directories if needed
+            Path(c.speciesFile).parent.mkdir(parents=True, exist_ok=True)
+            print(f"Auto-detecting species and saving to: {c.speciesFile}")
+        except Exception as e:
+            print(f"Error initializing species file {c.speciesFile}: {e}")
+            return [], []
+    elif c.species_mode == 'file':
+        # Load the species dictionary from the file if in file mode
+        try:
+            c.seq_species_dict = species_seq_dict(c.speciesFile)
+            print(f"Loaded species assignments from: {c.speciesFile}, Length: {len(c.seq_species_dict)}")
+        except Exception as e:
+            print(f"Error loading species file {c.speciesFile}: {e}")
+            c.seq_species_dict = {}
+
     # Read all records first
     records = list(SeqIO.parse(c.input_fasta, "fasta"))
     print(f"Processing {len(records)} sequence(s) using {n_processes} threads...")
@@ -306,17 +362,45 @@ def prepare_jobs_parallel(c: Config, n_processes=None):
     # Combine all results
     all_chunk_jobs = []
     all_tmp_fastas = []
-    
-    # Process records in parallel with progress bar
-    with mp.Pool(processes=n_processes) as pool:
+
+    #Process records in parallel with progress bar
+    # with mp.Pool(processes=n_processes) as pool:
+    #     with tqdm(total=len(records), desc="Processing sequence(s)") as pbar:
+    #         for result in pool.imap_unordered(process_func, records):
+    #             chunk_jobs, tmp_fastas = result
+    #             all_chunk_jobs.extend(chunk_jobs)
+    #             all_tmp_fastas.extend(tmp_fastas)
+    #             pbar.update()
+
+    # with tqdm(total=len(records), desc="Processing sequence(s)") as pbar:
+    #     for record in records:
+    #         result = process_func(record)
+    #         chunk_jobs, tmp_fastas = result
+    #         all_chunk_jobs.extend(chunk_jobs)
+    #         all_tmp_fastas.extend(tmp_fastas)
+    #         pbar.update()
+    process_func = partial(process_single_record, config=c)
+    lock = threading.Lock()  # Protect writes to shared lists
+    def worker_wrapper(record):
+        return process_func(record)
+    with ThreadPoolExecutor(max_workers=n_processes) as executor:
         with tqdm(total=len(records), desc="Processing sequence(s)") as pbar:
-            for result in pool.imap_unordered(process_func, records):
+            for result in executor.map(worker_wrapper, records):
                 chunk_jobs, tmp_fastas = result
-                all_chunk_jobs.extend(chunk_jobs)
-                all_tmp_fastas.extend(tmp_fastas)
+                with lock:
+                    all_chunk_jobs.extend(chunk_jobs)
+                    all_tmp_fastas.extend(tmp_fastas)
                 pbar.update()
+ 
+        # Print species mode summary
+    if c.species_mode == 'auto':
+        print(f"Species assignments saved to: {c.speciesFile}")
+    elif c.species_mode == 'single':
+        print(f"Using single species for all sequences: {c.species}")
+    else:
+        print(f"Using species assignments from: {c.speciesFile} (updated with auto-detected entries)")
     
-    return all_chunk_jobs, all_tmp_fastas   
+    return all_chunk_jobs, all_tmp_fastas
 
 def main():
     args = parse_args()
@@ -352,7 +436,10 @@ def main():
         minScore=merged_config['minScore'],
         minIdentity=merged_config['minIdentity'],
         overlap_filter=merged_config['overlap_filter'],
-        overlap_div_filter=merged_config['overlap_div_filter']
+        overlap_div_filter=merged_config['overlap_div_filter'],
+        speciesFile = merged_config["speciesFile"],
+        species_mode = merged_config["species_mode"],
+        seq_species_dict = merged_config["seq_species_dict"]
     )
 
     print("Configuration:")
@@ -368,7 +455,9 @@ def main():
     print(f"  Min Identity: {c.minIdentity}")
     print(f"  Overlap Filter: {c.overlap_filter}")
     print(f"  Overlap Div Filter: {c.overlap_div_filter}")
-    print(f"  Clean up files: {c.remove}\n")
+    print(f"  Clean up files: {c.remove}")
+    print(f"  Species detect mode: {c.species_mode}")
+    print(f"  Species file: {c.speciesFile}\n")
 
     if not os.path.exists(c.output_dir):
         os.makedirs(c.output_dir)

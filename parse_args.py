@@ -20,6 +20,9 @@ class Config:
     minIdentity: int # Is the threshold of the minimum percent identity a hit must have. Default: 95. Percent identity = ( match / Q_end - Q_start )*100
     overlap_filter: bool # Is false when you do not want to also do an overlap filter
     overlap_div_filter: bool # is false when you do not want to do an overlap and divergence filter
+    speciesFile: str # is a file that defines the species of every sequence in the fasta file
+    species_mode: str # code defined mode to help know how species are being defined
+    seq_species_dict: str # if file given, the dictionary created relating dict[seq_id]: species
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -51,13 +54,15 @@ def parse_args():
     parser.add_argument(
         "-k", "--kraken", help="Path to Kraken2 database")
     parser.add_argument(
-        "-i", "--index", type = str, help="(Optional) Index of sequences in your db, of their species, length, and tree leaf names. Default is the one built in the medival database. Can specify a different index here if you want to manually define each sequence's species.")
+        "-s", "--species", type=str, help="(Optional) Species of all sequences in your input FASTA file (replace spaces with '_'). Cannot be used together with --speciesFile. If neither --species nor --speciesFile is provided, species will be auto-detected and saved to a file.")
+    parser.add_argument(
+        "--speciesFile", type=str, help="(Optional) Tab-separated file where the first column is sequence ID and the second column is its species. Cannot be used together with --species. If neither --species nor --speciesFile is provided, species will be auto-detected and saved to a file.")
+    parser.add_argument(
+        "-i", "--index", type=str, help="(Optional) Index of sequences in your db, of their species, length, and tree leaf names. Default is the one built in the medival database. Can specify a different index here if you want to manually define each sequence's species.")
     parser.add_argument(
         "-t", "--threads", type=int, help="(Optional) Number of threads to use. Highly recommend a large number of threads (default: 1)")
     parser.add_argument(
         "-c", "--chunk", type=int, help="(Optional) Size for splitting sequences to feed to blat (default: 100000)")
-    parser.add_argument(
-        "-s", "--species", type = str, help = "(Optional) Species of the sequence(s) in your input fasta (replace spaces with '_'). If your file has multiple species, we recommend doing separate jobs for each species.")
     parser.add_argument(
         "-minScore", type = int, help = "(Optional) Minimum alignment score threshold for blat (default: 30)")
     parser.add_argument(
@@ -134,7 +139,7 @@ def validate_config_keys(config_data):
     valid_keys = {
         'query', 'output', 'database', 'tree', 'index', 'kraken',
         'threads', 'chunk', 'remove', 'species', 'minScore', 'minIdentity',
-        'overlap_filter', 'overlap_div_filter'
+        'overlap_filter', 'overlap_div_filter', "speciesFile"
     }
     
     # Check for unrecognized keys
@@ -174,6 +179,48 @@ def validate_config_keys(config_data):
             if config_data[key] < 0:
                 raise ValueError(f"Config parameter '{key}' must be non-negative, got {config_data[key]}")
 
+def species_seq_dict(species_file):
+    """
+    Load species mapping from a tab-separated file.
+    Returns a dictionary mapping sequence IDs to species.
+    """
+    UNCLASSIFIED = "unclassified"
+    NULL_VALUES = {"none", "null", "na", "n/a", "", "unknown"}
+
+    species_map = {}
+    try:
+        with open(species_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                parts = line.split('\t')
+                if len(parts) < 2:
+                    print(
+                        f"Warning: Line {line_num} malformed "
+                        f"(expected ≥2 columns). Marking as unclassified."
+                    )
+                    seq_id = parts[0]
+                    species_map[seq_id] = UNCLASSIFIED
+                    continue
+                seq_id, species = parts[0], parts[1]
+
+                species_clean = species.strip()
+
+                # Catch undefined / null species values
+                if species_clean.lower() in NULL_VALUES:
+                    species_map[seq_id] = UNCLASSIFIED
+                else:
+                    species_map[seq_id] = species_clean
+        return species_map
+    
+    except FileNotFoundError:
+        print(f"Error: Species file {species_file} not found.")
+        return {}
+    except Exception as e:
+        print(f"Error reading species file {species_file}: {e}")
+        return {}
+
 def merge_config_and_args(args, config_data=None):
     """Merge configuration file data with command line arguments.
     Command line arguments take priority over config file values."""
@@ -197,10 +244,12 @@ def merge_config_and_args(args, config_data=None):
         'chunk': ('chunk', 100000),
         'remove': ('remove', False),
         'species': ('species', None),
+        'speciesFile': ('speciesFile', None),
         'minScore': ('minScore', 30),
         'minIdentity': ('minIdentity', 0),
         'overlap_filter': ('overlap_filter', False),
-        'overlap_div_filter': ('overlap_div_filter', False)
+        'overlap_div_filter': ('overlap_div_filter', False),
+        'seq_species_dict': ('seq_species_dict', None)
     }
     
     # Process each parameter
@@ -250,4 +299,42 @@ def validate_required_params(config_dict):
             print(f"  --{param}")
         print("\nEither provide them via command line or in your config file.")
         return False
+        
+    # Validate species configuration
+    species = config_dict.get("species")
+    species_file = config_dict.get("speciesFile")
+    
+    # Check that both species and speciesFile are not defined
+    if species is not None and species_file is not None:
+        print("Error: Both --species and --speciesFile are defined.")
+        print("Please only define one or the other:")
+        print("  --species assigns one species to every sequence in the input file")
+        print("  --speciesFile is a tab-separated file that assigns a different species to each sequence")
+        print("If you want us to automatically assign species, leave both undefined.")
+        return False
+
+    species_output_file = f"{config_dict['output']}/species_{config_dict['output']}_{Path(config_dict['query']).stem}.tsv"
+    
+    # Determine species handling mode
+    if species is None and species_file is None:
+        # Auto-detect mode: species will be written to and read from auto-generated file
+        if Path(species_output_file).exists():
+            # File already exists just use it
+            config_dict['species_mode'] = 'file'
+            config_dict['species_file'] = species_output_file
+            config_dict['seq_species_dict'] = species_seq_dict(species_output_file)
+        else:
+            # File does not exist auto-detect and create it
+            config_dict['species_mode'] = 'auto'
+            config_dict['species_file'] = species_output_file
+        
+    elif species is not None:
+        # User-defined single species for all sequences
+        config_dict['species_mode'] = 'single'
+    else:
+        # User-provided species file
+        config_dict['species_mode'] = 'file'
+        config_dict['species_file'] = species_output_file
+        config_dict['seq_species_dict'] = species_seq_dict(config_dict['species_file'])
+
     return True

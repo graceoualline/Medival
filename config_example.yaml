@@ -2,7 +2,7 @@
 
 # Required arguments:
 query: /usr1/gouallin/blat/blat_pipeline/test/acrB.fasta
-output: medival_test_results_acrBS
+output: medival_test_results_acrBS_new_species
 database: /usr1/shared/medival_gtdb_db/ # blat database
 kraken: /usr1/shared/kraken2_custom_db/ # path to the kraken database
 tree: /usr1/gouallin/blat/divergence_tree/ # path to the tree directory
@@ -11,7 +11,8 @@ tree: /usr1/gouallin/blat/divergence_tree/ # path to the tree directory
 chunk: 100000 # how we want to split up the query to run in blat
 threads: 8 # number of threads the user wants to use, HIGHLY RECOMMEND increasing this value
 remove: false # will delete intermediate files as the program goes on
-species: null # user defined species of all of the sequences given in a query, null if unknown
+species: Null # user defined species of all of the sequences given in a query, null if unknown
+speciesFile: Null # if there are multiple species in one fasta file, this is a tab separated file that specify all species
 minScore: 30 # Is the minimum alignment score threshold, sets blat's parameter -minScore, default 30
 minIdentity: 0 # Is the threshold of the minimum percent identity a hit must have. Default: 95. Percent identity = ( match / Q_end - Q_start )*100
 overlap_filter: true # Is false when you do not want to also do an overlap filter

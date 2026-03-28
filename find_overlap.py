@@ -59,18 +59,23 @@ def compress(input_file):
     rows = sorted(list(rows), key=lambda x: (int(x[qs]), int(x[qe])))
     compressed = []
     #if there is no one, then return nothing
-    if not rows:
+    if not rows or len(rows) <= 1:
         return []
 
     #Initialize first merged interval
     i = 0
     
     s_cur, e_cur, species_cur, row_cur = int(rows[i][qs]), int(rows[i][qe]), rows[i][rsp], list(rows[i])
-    while species_cur == "unclassified" and i < len(rows):
-        # add those whose species is unknown
+    if species_cur == "unclassified": 
         compressed.append(tuple(row_cur))
         i += 1
+    
+    while species_cur == "unclassified" and i < len(rows):
+        # add those whose species is unknown
         s_cur, e_cur, species_cur, row_cur = int(rows[i][qs]), int(rows[i][qe]), rows[i][rsp], list(rows[i])
+        compressed.append(tuple(row_cur))
+        i += 1
+        
         
     
     for row in rows[i+1:]:

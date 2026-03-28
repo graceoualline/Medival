@@ -16,7 +16,8 @@ from Bio import SeqIO
 
 def crude_ani(len1, len2, matches):
     if 0 in [len1, len2]: return -1
-    return (matches / min(len1, len2))*100
+    value = matches / min(len1, len2)
+    return value*100
 
 def batch_extract_sequences(ref_ids, index, skani_db, cutoff = 500):
     """
@@ -152,6 +153,7 @@ def filter_blat(inf, outf, q_species, index, tree, q_seq, blat_db, minIdentity, 
             ref_id = columns[13]  # Assuming reference sequence ID is in the 14th column
             match = int(columns[0])
             Qstart = int(columns[11])
+            Qsize = int(columns[10])
             Qend = int(columns[12])
             perIdent = round((match / (Qend-Qstart))*100, 5)
 
@@ -201,7 +203,22 @@ def filter_blat(inf, outf, q_species, index, tree, q_seq, blat_db, minIdentity, 
             ref_fasta_list, long_refs, too_short = batch_extract_sequences(ref_ids_needing_ani, index, skani_db)
             
             print(f"Calculating ANI for {len(long_refs)} sequences...")
-            ani_results = batch_calculate_ani(q_seq, ref_fasta_list, long_refs)
+            if Qsize < 500:
+                ani_results = {}
+                for line in lines_to_process:
+                    r = line["ref_id"]
+                    matches = int(line["columns"][0])
+                    len2 = int(line["columns"][14])
+                    ani_results[r] = crude_ani(Qsize, len2, matches)
+            else:
+                ani_results = batch_calculate_ani(q_seq, ref_fasta_list, long_refs)
+                # calculate the too short ones
+                for line in lines_to_process:
+                    if line["ref_id"] in too_short:
+                        r = line["ref_id"]
+                        matches = int(line["columns"][0])
+                        len2 = int(line["columns"][14])
+                        ani_results[r] = crude_ani(Qsize, len2, matches)
 
             # then write them to file if they pass
             for line_data in lines_to_process:
