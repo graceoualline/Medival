@@ -66,19 +66,14 @@ def compress(input_file):
     i = 0
     
     s_cur, e_cur, species_cur, row_cur = int(rows[i][qs]), int(rows[i][qe]), rows[i][rsp], list(rows[i])
-    if species_cur == "unclassified": 
-        compressed.append(tuple(row_cur))
-        i += 1
-    
+
     while species_cur == "unclassified" and i < len(rows):
         # add those whose species is unknown
         s_cur, e_cur, species_cur, row_cur = int(rows[i][qs]), int(rows[i][qe]), rows[i][rsp], list(rows[i])
         compressed.append(tuple(row_cur))
         i += 1
         
-        
-    
-    for row in rows[i+1:]:
+    for row in rows[i:]:
         s2, e2, species2, row2 = int(row[qs]), int(row[qe]), row[rsp], list(row)
         # if this new species is unclassified, just add it and move on
         if species2 == "unclassified":

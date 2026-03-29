@@ -23,6 +23,7 @@ class Config:
     speciesFile: str # is a file that defines the species of every sequence in the fasta file
     species_mode: str # code defined mode to help know how species are being defined
     seq_species_dict: str # if file given, the dictionary created relating dict[seq_id]: species
+    intermediate_dir: str # the directory that will contain intermediate files that are used to build the final files
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -179,7 +180,7 @@ def validate_config_keys(config_data):
             if config_data[key] < 0:
                 raise ValueError(f"Config parameter '{key}' must be non-negative, got {config_data[key]}")
 
-def species_seq_dict(species_file):
+def species_seq_dict(speciesFile):
     """
     Load species mapping from a tab-separated file.
     Returns a dictionary mapping sequence IDs to species.
@@ -189,8 +190,8 @@ def species_seq_dict(species_file):
 
     species_map = {}
     try:
-        with open(species_file, 'r') as f:
-            for line in f:
+        with open(speciesFile, 'r') as f:
+            for line_num, line in enumerate(f, 1):
                 line = line.strip()
                 if not line or line.startswith('#'):
                     continue
@@ -215,10 +216,10 @@ def species_seq_dict(species_file):
         return species_map
     
     except FileNotFoundError:
-        print(f"Error: Species file {species_file} not found.")
+        print(f"Error: Species file {speciesFile} not found.")
         return {}
     except Exception as e:
-        print(f"Error reading species file {species_file}: {e}")
+        print(f"Error reading species file {speciesFile}: {e}")
         return {}
 
 def merge_config_and_args(args, config_data=None):
@@ -249,7 +250,7 @@ def merge_config_and_args(args, config_data=None):
         'minIdentity': ('minIdentity', 0),
         'overlap_filter': ('overlap_filter', False),
         'overlap_div_filter': ('overlap_div_filter', False),
-        'seq_species_dict': ('seq_species_dict', None)
+        'seq_species_dict': ('seq_species_dict', None),
     }
     
     # Process each parameter
@@ -302,10 +303,10 @@ def validate_required_params(config_dict):
         
     # Validate species configuration
     species = config_dict.get("species")
-    species_file = config_dict.get("speciesFile")
+    speciesFile = config_dict.get("speciesFile")
     
     # Check that both species and speciesFile are not defined
-    if species is not None and species_file is not None:
+    if species is not None and speciesFile is not None:
         print("Error: Both --species and --speciesFile are defined.")
         print("Please only define one or the other:")
         print("  --species assigns one species to every sequence in the input file")
@@ -316,25 +317,24 @@ def validate_required_params(config_dict):
     species_output_file = f"{config_dict['output']}/species_{config_dict['output']}_{Path(config_dict['query']).stem}.tsv"
     
     # Determine species handling mode
-    if species is None and species_file is None:
+    if species is None and speciesFile is None:
         # Auto-detect mode: species will be written to and read from auto-generated file
         if Path(species_output_file).exists():
             # File already exists just use it
             config_dict['species_mode'] = 'file'
-            config_dict['species_file'] = species_output_file
+            config_dict['speciesFile'] = species_output_file
             config_dict['seq_species_dict'] = species_seq_dict(species_output_file)
         else:
             # File does not exist auto-detect and create it
             config_dict['species_mode'] = 'auto'
-            config_dict['species_file'] = species_output_file
-        
+            config_dict['speciesFile'] = species_output_file
     elif species is not None:
         # User-defined single species for all sequences
         config_dict['species_mode'] = 'single'
     else:
         # User-provided species file
         config_dict['species_mode'] = 'file'
-        config_dict['species_file'] = species_output_file
-        config_dict['seq_species_dict'] = species_seq_dict(config_dict['species_file'])
+        config_dict['speciesFile'] = speciesFile
+        config_dict['seq_species_dict'] = species_seq_dict(config_dict['speciesFile'])
 
     return True

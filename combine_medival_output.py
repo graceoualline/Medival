@@ -8,7 +8,7 @@ import sys
 import os
 
 def adjust_and_merge_tsvs(chunk_dir, chunk_size, output_file, to_combine):
-    #ex to_combine = *medival_output.tsv
+    #ex to_combine = *first_div_output.tsv
     all_files = sorted(glob.glob(os.path.join(chunk_dir, "*" + to_combine)))
     #print(chunk_dir)
     #print(to_combine)
@@ -32,13 +32,12 @@ def adjust_and_merge_tsvs(chunk_dir, chunk_size, output_file, to_combine):
 
         #if df.empty:
         #    continue  # Skip empty chunks
-        
-        if df.shape[1] > 15:
-            start_index = 11
-            end_index = 12
-        else:
-            start_index = 2# 11 for full size
-            end_index = 3
+        print(df.columns)
+        start_index = df.columns.get_loc("Q start")
+        try:
+            end_index = df.columns.get_loc("Q end")
+        except:
+            end_index = df.columns.get_loc(" Q end")
         #skip if its the first one, dont bother
         if offset > 0:
             df.iloc[:, start_index] = pd.to_numeric(df.iloc[:, start_index], errors = 'coerce') + offset  # Adjust start
@@ -62,7 +61,7 @@ def adjust_and_merge_tsvs(chunk_dir, chunk_size, output_file, to_combine):
     
 if __name__ == "__main__":
     if len(sys.argv) != 5:
-        print("Usage: python3 combine_medival_output.py <medival_output_directory> <chunk_size> <which files to combine ex. *medival_output.tsv> <output_file>")
+        print("Usage: python3 combine_medival_output.py <medival_output_directory> <chunk_size> <which files to combine ex. *first_div_output.tsv> <output_file>")
         sys.exit(1)
 
     chunk_dir = sys.argv[1]

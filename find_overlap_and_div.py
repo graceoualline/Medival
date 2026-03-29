@@ -91,8 +91,8 @@ def find_overlap_and_div(rows, output_file, tree, skani_db, index):
                         new_row.append(f"{row1[h]},{row2[h]}")
                 new_row.extend([str(div), str(ani)])
                 #print(i, j, "merged")
-                used.add(rows[i])
-                used.add(rows[j])
+                used.add(i)
+                used.add(j)
                 new_rows.add("\t".join(new_row))
                 break
             

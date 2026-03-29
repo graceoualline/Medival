@@ -188,20 +188,20 @@ python medival.py \
 ## Filters
 Filters are described in further detail, and their processes are illustrated in our paper (add cite).
 ### Divergence Filtering
-- Divergence filtering is the main method for detecting MGEs and produces the file ```{output_name}_medival_output.tsv```.
+- Divergence filtering is the main method for detecting MGEs and produces the file ```{output_name}_first_div_output.tsv```.
 - By examining the species of the query genome and the genome it aligned to, we use the TimeTree of Life to calculate the divergence time between the two species. If the species diverged over 1 million years ago (```divergence >= 1 MYA```), the alignment is retained.
 - This filter is effective at identifying horizontal gene transfer events because MGEs transferred between distantly related species will show high sequence similarity despite ancient species divergence.
 - For detailed information on how this filter detects MGEs, please refer to our paper: (citation tba).
 ### Additional filtering
-These filters further refine the alignments that were identified as divergently distant in ```{output_name}_medival_output.tsv```:
+These filters further refine the alignments that were identified as divergently distant in ```{output_name}_first_div_output.tsv```:
 #### Overlap Filtering
 - Enabling ```--overlap_filter``` produces the file ```{output_name}_overlap.tsv```
-- This filter processes the results from ```{output_name}_medival_output.tsv```
+- This filter processes the results from ```{output_name}_first_div_output.tsv```
 - It identifies two alignments that overlap spatially on the query sequence but originate from different species
 - While effective at reducing false positives, it also reduces medival's sensitivity for detecting true MGEs (see paper for details)
 #### Overlap Divergence Filtering
 - Enabling ```--overlap_div_filter``` produces the file ```{output_name}_overlap_div.tsv```
-- This filter processes the results from {output_name}_medival_output.tsv
+- This filter processes the results from {output_name}_first_div_output.tsv
 -This filter identifies overlapping alignments where the source species are divergently distant (>= 1 MYA) 
 - It is the most stringent filter that effectively reduces false positives but may decrease sensitivity for detecting true MGEs and requires longer processing time.
 - Recommended for high-confidence MGE detection when processing time is not a constraint
@@ -210,7 +210,7 @@ These filters further refine the alignments that were identified as divergently 
 ```
 output_directory/
 ├── output_name_blat_results.tsv      # Raw BLAT alignments
-├── output_name_medival_output.tsv    # Divergence-filtered results
+├── output_name_first_div_output.tsv    # Divergence-filtered results
 ├── output_name_overlap.tsv           # Overlap-filtered results (if enabled)
 └── output_name_overlap_div.tsv       # Overlap+divergence filtered (if enabled)
 ```
@@ -228,16 +228,16 @@ medival_test_results_test/
 │   └── chunk_1_test_part_136.psl
 .....
 ├── chunk_0_test_blat_output.tsv
-├── chunk_0_test_medival_output.tsv
+├── chunk_0_test_first_div_output.tsv
 ├── chunk_0_test_overlap_div.tsv
 ├── chunk_0_test_overlap.tsv
 ├── chunk_1_test_blat_output.tsv
-├── chunk_1_test_medival_output.tsv
+├── chunk_1_test_first_div_output.tsv
 ├── chunk_1_test_overlap_div.tsv
 ├── chunk_1_test_overlap.tsv
 .....
 ├── medival_test_results_test_blat_results.tsv
-├── medival_test_results_test_medival_output.tsv
+├── medival_test_results_test_first_div_output.tsv
 ├── medival_test_results_test_overlap_div.tsv
 └── medival_test_results_test_overlap.tsv
 ```

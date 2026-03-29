@@ -2,7 +2,7 @@
 
 # Required arguments:
 query: /usr1/gouallin/blat/blat_pipeline/test/acrB.fasta
-output: medival_test_results_acrBS_new_species
+output: medival_test_results_acrBS_test_new_changes
 database: /usr1/shared/medival_gtdb_db/ # blat database
 kraken: /usr1/shared/kraken2_custom_db/ # path to the kraken database
 tree: /usr1/gouallin/blat/divergence_tree/ # path to the tree directory

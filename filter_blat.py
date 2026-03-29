@@ -52,7 +52,8 @@ def batch_calculate_ani(query_path, ref_list_path, ref_list):
     
     try:
         # Run skani with query against all references
-        print(f"skani dist {query_path} --rl {ref_list_path}")
+        #print(f"skani dist {query_path} --rl {ref_list_path}")
+        #input("Press enter to continue")
         result = subprocess.run(
             ["skani", "dist", query_path, "--rl", ref_list_path],
             capture_output=True,
@@ -76,12 +77,12 @@ def batch_calculate_ani(query_path, ref_list_path, ref_list):
                 
     except (subprocess.CalledProcessError, ValueError) as e:
         print(f"Error in batch ANI calculation: {e}")
-        #with open("debugging_batch_skani_err.txt", "w") as f: f.write(str(e))
+        #with open("debugging_batch_skani_err.txt", "w") as f: f.write(f"{str(e)}\nskani dist {query_path} --rl {ref_list_path}")
         #input("Press enter to continue")
         # Return -1 for all refs that failed
-        for ref_id in ref_list_path.keys():
-            if ref_id not in ani_results:
-                ani_results[ref_id] = "unk:skani_err"
+        for r in ref_list:
+            if r not in ani_results:
+                ani_results[r] = "unk:skani_err"
     finally:
         os.remove(ref_list_path)
     
@@ -142,7 +143,7 @@ def filter_blat(inf, outf, q_species, index, tree, q_seq, blat_db, minIdentity, 
 
     with open(inf, 'r') as infile, open(outf, 'w') as outfile:
         
-        outfile.write("match\tmismatch\trep. match\tN's\tQ gap count \tQ gap bases\tT gap count\tT gap bases\tstrand\tQ name\tQ size\tQ start\t Q end\tT name\tT size\tT start\tT end\tblock count\tblockSizes\tqStarts\ttStarts\tPercent Identity\tQuery Species\tReference Species\tDivergence Time\tANI bt seqs(if div=unk)\n")
+        outfile.write("match\tmismatch\trep. match\tN's\tQ gap count \tQ gap bases\tT gap count\tT gap bases\tstrand\tQ name\tQ size\tQ start\tQ end\tT name\tT size\tT start\tT end\tblock count\tblockSizes\tqStarts\ttStarts\tPercent Identity\tQuery Species\tReference Species\tDivergence Time\tANI bt seqs(if div=unk)\n")
         # Process each line in the BLAT file
         for line in infile:
             columns = line.strip().split('\t')
@@ -203,8 +204,9 @@ def filter_blat(inf, outf, q_species, index, tree, q_seq, blat_db, minIdentity, 
             ref_fasta_list, long_refs, too_short = batch_extract_sequences(ref_ids_needing_ani, index, skani_db)
             
             print(f"Calculating ANI for {len(long_refs)} sequences...")
+            ani_results = {}
+            # if the query itself is 500 bp, we cant use skani, do crude ani for all references
             if Qsize < 500:
-                ani_results = {}
                 for line in lines_to_process:
                     r = line["ref_id"]
                     matches = int(line["columns"][0])
@@ -212,13 +214,6 @@ def filter_blat(inf, outf, q_species, index, tree, q_seq, blat_db, minIdentity, 
                     ani_results[r] = crude_ani(Qsize, len2, matches)
             else:
                 ani_results = batch_calculate_ani(q_seq, ref_fasta_list, long_refs)
-                # calculate the too short ones
-                for line in lines_to_process:
-                    if line["ref_id"] in too_short:
-                        r = line["ref_id"]
-                        matches = int(line["columns"][0])
-                        len2 = int(line["columns"][14])
-                        ani_results[r] = crude_ani(Qsize, len2, matches)
 
             # then write them to file if they pass
             for line_data in lines_to_process:
@@ -231,6 +226,7 @@ def filter_blat(inf, outf, q_species, index, tree, q_seq, blat_db, minIdentity, 
                 ani = ani_results.get(ref_id, f"unk:too_short")
                 # if one of the sequences is too short, just do a crude ani
                 if ani == "unk:too_short": ani = crude_ani(int(columns[10]), int(columns[14]), int(columns[0]))
+                # remove line if it is >=95% ani
                 if isinstance(ani, (int, float)):
                     if ani < 0 or ani >= 95:
                         continue

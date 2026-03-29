@@ -31,13 +31,13 @@ class Divergence_Tree_Preprocessed():
         mins_file  = get_one(tree_path.glob("*.mins.npy"))
         tour_file  = get_one(tree_path.glob("*.tour.npy"))
 
-        print("Loading Divergence Tree")
+        #print("Loading Divergence Tree")
         self.tree = Tree(nwk_file)
         self.species_dist = load_hash_table(plk_file)
         self.index = load_np(index_file)
         self.mins = load_np(mins_file)
         self.tour = load_np(tour_file)
-        print("Divergence Tree Loaded!")
+        #print("Divergence Tree Loaded!")
         
     def get_min_index(self, i,j):
         """Range min query on L[i:j]"""

@@ -31,9 +31,11 @@ def progress(processed_seqs, total_seqs, start_time, file_index):
 def count_sequences(input_fasta):
     print(f"Counting sequences in {input_fasta}...")
     count = 0
-    for _ in SeqIO.parse(input_fasta, "fasta"):
-        count += 1
-        if count % 10000 == 0: print("Current count:", count)
+    with open(input_fasta, 'r') as f:
+        for line in f:
+            if line.startswith('>'):
+                count += 1
+                if count % 10000 == 0: print("Current count:", count)
     return count
 
 def count_sequences_in_directory(directory):
