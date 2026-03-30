@@ -1,10 +1,3 @@
-# medival for optimized threading
-# will run all blat db on different threads
-# then run filters on all results on different threads
-# combine all results, filters and blat output into one file
-# remove individual chunk files (if sequence over 100kbp)
-# or if there are differerent sequences
-
 import os
 import tempfile
 import subprocess
@@ -23,14 +16,24 @@ from build_database_index import *
 import time
 from concurrent.futures import ThreadPoolExecutor
 import threading
-# import re
+
 _worker_tree = None
 _worker_index = None
 
 def _init_worker(tree_dir, index_path):
     global _worker_tree, _worker_index
+    sys.stdout = open(os.devnull, 'w')
     _worker_tree = Divergence_Tree_Preprocessed(tree_dir)
     _worker_index = load_hash_table(index_path)
+
+def _suppress_stdout(func, args):
+    old_stdout = sys.stdout
+    sys.stdout = open(os.devnull, 'w')
+    try:
+        return func(args)
+    finally:
+        sys.stdout.close()
+        sys.stdout = old_stdout
 
 def combine_and_cleanup_psl_files(args):
     header_lines = 5
@@ -108,7 +111,7 @@ def run_all_filters(chunk_jobs, c: Config):
             with ThreadPoolExecutor(max_workers=c.max_threads) as executor:
                 #Progress bar
                 with tqdm(total=len(blat_combine_jobs), desc="Combining blat data") as pbar:
-                    for _ in executor.map(combine_and_cleanup_psl_files, blat_combine_jobs):
+                    for _ in executor.map(lambda args: _suppress_stdout(combine_and_cleanup_psl_files, args), blat_combine_jobs):
                         pbar.update()
         print("Finished combining blat data.")
     
@@ -208,7 +211,7 @@ def run_blat_on_chunk(chunk_jobs, blat_files, ooc_files, c: Config):
         with ThreadPoolExecutor(max_workers=c.max_threads) as executor:
             #Progress bar
             with tqdm(total=len(jobs), desc="Running Sequence(s) through blat") as pbar:
-                for _ in executor.map(run_blat, jobs):
+                for _ in executor.map(lambda args: _suppress_stdout(run_blat, args), jobs):
                     pbar.update()
 
 def run_combine_results(job):
@@ -367,23 +370,6 @@ def prepare_jobs_parallel(c: Config, n_processes=None):
     all_chunk_jobs = []
     all_tmp_fastas = []
 
-    #Process records in parallel with progress bar
-    # with mp.Pool(processes=n_processes) as pool:
-    #     with tqdm(total=len(records), desc="Processing sequence(s)") as pbar:
-    #         for result in pool.imap_unordered(process_func, records):
-    #             chunk_jobs, tmp_fastas = result
-    #             all_chunk_jobs.extend(chunk_jobs)
-    #             all_tmp_fastas.extend(tmp_fastas)
-    #             pbar.update()
-
-    # with tqdm(total=len(records), desc="Processing sequence(s)") as pbar:
-    #     for record in records:
-    #         result = process_func(record)
-    #         chunk_jobs, tmp_fastas = result
-    #         all_chunk_jobs.extend(chunk_jobs)
-    #         all_tmp_fastas.extend(tmp_fastas)
-    #         pbar.update()
-    process_func = partial(process_single_record, config=c)
     lock = threading.Lock()  # Protect writes to shared lists
     def worker_wrapper(record):
         return process_func(record)
@@ -507,7 +493,7 @@ def main():
     for tmp in tmp_fastas:
         os.remove(tmp)
         
-    print("medival FINISHED")
+    print("MEDIVAL FINISHED")
 
     print("Endtime time:", datetime.now())
     

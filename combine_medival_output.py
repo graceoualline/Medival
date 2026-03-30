@@ -21,18 +21,16 @@ def adjust_and_merge_tsvs(chunk_dir, chunk_size, output_file, to_combine):
         # Calculate chunk offset
         offset = int(idx * chunk_size)
 
-        with open(filename, 'r') as f:
-            first_line = f.readline()
-            try:
-                df = pd.read_csv(filename, sep='\t')
-            except:
-                df = pd.read_csv(filename, sep='\t', on_bad_lines='skip')
-                print(f"Warning, {filename} has malformed lines.")
-            total_len += len(df)
+        try:
+            df = pd.read_csv(filename, sep='\t', low_memory=False)
+        except:
+            df = pd.read_csv(filename, sep='\t', on_bad_lines='skip', low_memory=False)
+            print(f"Warning, {filename} has malformed lines.")
+        total_len += len(df)
 
-        #if df.empty:
-        #    continue  # Skip empty chunks
-        print(df.columns)
+        if df.empty:
+            continue  # Skip empty chunks
+    
         start_index = df.columns.get_loc("Q start")
         try:
             end_index = df.columns.get_loc("Q end")
@@ -46,7 +44,22 @@ def adjust_and_merge_tsvs(chunk_dir, chunk_size, output_file, to_combine):
         dfs.append(df) 
         
     
-    # Merge all
+    # Merge all, if there were no dfs that had data, jsut write empty header file
+    if not dfs:
+        print(f"No data found for {to_combine}.")
+        if all_files:
+            # Read just the header from the first available file
+            try:
+                empty_df = pd.read_csv(all_files[0], sep='\t', nrows=0)
+                empty_df.to_csv(output_file, sep='\t', index=False)
+                return all_files
+            except Exception as e:
+                print(f"Could not extract headers from {all_files[0]}: {e}")
+                return []
+        else:
+            print("No source files found at all. Nothing to write.")
+            return []
+        
     final_df = pd.concat(dfs, ignore_index=True)
 
     # Save
@@ -54,7 +67,6 @@ def adjust_and_merge_tsvs(chunk_dir, chunk_size, output_file, to_combine):
         final_df.to_csv(output_file, sep='\t', index=False)
         print(f"Combined file written to {output_file}")
         return all_files
-    #print("Total length is", total_len)
     except:
         print(f"Error creating {to_combine}")
         return []
