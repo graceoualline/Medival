@@ -215,5 +215,6 @@ if __name__ == "__main__":
     print(f"Hash index saved to {final_output}")
     print("="*60)
     print("DATABASE INDEX CREATION COMPLETED!")
-    print(f"Once you've ensured your build database and index is functional, you can delete {medival_db}/blat_fasta_db and {seq_lengths} to save space.")
+    print(f"Once you've ensured your build database and index is functional, you can delete the following items to save space:")
+    print(f"{medival_db}/blat_fasta_db, {seq_lengths}, skani_triangle_raw.tsv, skani_triangle_ani95.tsv")
     print("="*60)

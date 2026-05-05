@@ -16,7 +16,7 @@ from find_overlap import *
 
 #if it finds regions that overlap and map to the same species, it will combine them
 
-def find_overlap_and_div(rows, output_file, tree, skani_db, index):
+def find_overlap_and_div(rows, output_file, tree, triangle_dict, index):
     div_cache = dict()
     ani_cache = dict() # (id1, id2) : ani
     #"Q name\tQ size\tQ start\tQ end\tT name\tT size\tT start\tT end\tPercent Identity\tQuery Species\tReference Species\tDivergence Time\tANI bt seqs(if div=unk)\tANI bt ref seqs(if species unk)\n")
@@ -71,13 +71,12 @@ def find_overlap_and_div(rows, output_file, tree, skani_db, index):
                 id1 = row1[tname]
                 id2 = row2[tname]
                 ani = check_cache(id1, id2, ani_cache)
-                if ani == None:
-                    ani = find_ani_overlap(id1, id2, skani_db, index)
-                    if ani == "unk:too_short": ani = crude_ani_overlap(s1, e1, s2, e2, int(row1[5]), int(row2[5]))
+                if ani is None:
+                    ani = lookup_ani_triangle(id1, id2, triangle_dict, index, s1, e1, s2, e2)
                     ani_cache[(id1, id2)] = ani
 
                 
-            if (not isinstance(div, str) and div >= 1) or (isinstance(ani, int) and ani < 95):
+            if (not isinstance(div, str) and div >= 1) or ani is True:
                 #print("merging rows")
                 new_row = []
                 new_start = max(s1, s2)
@@ -98,26 +97,25 @@ def find_overlap_and_div(rows, output_file, tree, skani_db, index):
             
     with open(output_file, "w") as out:
                  #"Q name\tQ size\tQ start\tQ end\tT name\tT size\tT start\tT end\tPercent Identity\tQuery Species\tReference Species\tDivergence Time\tANI bt seqs(if div=unk)
-        out.write("Q name\tQ size\tQ start\tQ end\tT name\tT size\tT start\tT end\tPercent Identity\tQuery Species\tReference Species\tDivergence Time\tANI bt seqs(if div=unk)\tDiv bt ref species\tAni bt ref species\n")
+        out.write("Q name\tQ size\tQ start\tQ end\tT name\tT size\tT start\tT end\tPercent Identity\tQuery Species\tReference Species\tDivergence Time\tANI<95(if div=unk)\tDiv bt Ref Species\tANI<95 bt Ref Seqs\n")
         #if we do have new rows, then write them
         if len(new_rows) > 0:
             for l in new_rows:
                 out.write(l + "\n")
 
 if __name__ == "__main__":
-    # Check if the correct number of command-line arguments is provided
-    #
     if len(sys.argv) != 5:
         print("Usage: python3 find_overlap_and_div.py <file of blatdiver output> <output file name> <tree> <medival_db>")
         sys.exit(1)
+    import pickle
     input_file = sys.argv[1]
     output = sys.argv[2]
     tree = Divergence_Tree_Preprocessed(sys.argv[3])
-    index = load_hash_table(f"{sys.argv[4]}/medival_db_index.pkl")
-    skani_db = f"{sys.argv[4]}/skani_db"
+    medival_db = sys.argv[4]
+    index = load_hash_table(f"{medival_db}/medival_db_index.pkl")
+    with open(f"{medival_db}/skani_triangle_ani95.pkl", "rb") as f:
+        triangle_dict = pickle.load(f)
 
-    #print("Compressing")
     rows = compress(input_file)
-    #print("Rows before:", len(rows))
-    find_overlap_and_div(rows, output, tree, skani_db, index)
+    find_overlap_and_div(rows, output, tree, triangle_dict, index)
     print("Filtered file written to", output)

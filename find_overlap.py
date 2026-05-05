@@ -12,25 +12,20 @@ def crude_ani_overlap(s1, e1, s2, e2, len1, len2):
     if 0 in [len1, len2]: return -1
     return (overlap/min(len1, len2))*100
 
-def find_ani_overlap(q_id, ref_id, skani_db, index, cutoff = 500):
+def lookup_ani_triangle(id1, id2, triangle_dict, index, s1=None, e1=None, s2=None, e2=None, cutoff=500):
     """
-    Finds the ANI between a query sequence and a reference sequence stored in a .2bit file.
-
-    Parameters:
-    - q_seq (str): Path to the query sequence (FASTA format).
-    - ref_id (str): The reference sequence ID to extract.
-    - blat_db (str): Path to the folder containing .2bit files.
-
-    Returns:
-    - float: ANI value (or None if reference is not found).
+    Returns True if ANI < 95% (keep), False if ANI >= 95% (discard).
+    Presence in triangle_dict means ANI >= 95.
+    Falls back to crude_ani_overlap when either sequence is < 500 bp.
     """
-    q_seq = f"{skani_db}/{q_id}.fasta"
-    ref_fasta_name = f"{skani_db}/{ref_id}.fasta"
-    if lookup_length(index, q_id) < cutoff or lookup_length(index, ref_id) < cutoff: return "unk:too_short"
+    len1 = lookup_length(index, id1)
+    len2 = lookup_length(index, id2)
+    if len1 <= cutoff or len2 <= cutoff:
+        ani = crude_ani_overlap(s1, e1, s2, e2, len1, len2)
+        return isinstance(ani, (int, float)) and ani < 95
         
-    distance = calculate_distance(q_seq, ref_fasta_name)
-
-    return distance
+    key = (min(id1, id2), max(id1, id2))
+    return key not in triangle_dict  # True = ANI < 95, False = ANI >= 95
 
 #will keep Q name, Q start, Q end, T name(s), Q spec, T specie(s), divergence time(s), ani
 
@@ -111,7 +106,7 @@ def build_overlap_row(row1, row2, new_start, new_end, ani_value):
     new_row.append(str(ani_value))
     return "\t".join(new_row)
 
-def find_overlap(rows, output_file, skani_db, gtdb_index):
+def find_overlap(rows, output_file, triangle_dict, gtdb_index):
     qs = 2 #q start is 2
     qe = 3 # qend is 3
     rid = 4 # ref_id is 4
@@ -155,11 +150,10 @@ def find_overlap(rows, output_file, skani_db, gtdb_index):
                 id2 = row2[4]
                 if (id1, id2) in ani_cache: ani = ani_cache[(id1, id2)]
                 elif (id2, id1) in ani_cache: ani = ani_cache[(id2, id1)]
-                else: 
-                    ani = find_ani_overlap(id1, id2, skani_db, gtdb_index)
-                    if ani == "unk:too_short": ani = crude_ani_overlap(s1, e1, s2, e2, int(row1[5]), int(row2[5]))
+                else:
+                    ani = lookup_ani_triangle(id1, id2, triangle_dict, gtdb_index, s1, e1, s2, e2)
                     ani_cache[(id1, id2)] = ani
-                if type(ani) != str and ani < 95:
+                if ani is True:
                     new_row = build_overlap_row(row1, row2, new_start, new_end, ani)
                     new_rows.add(new_row)
                     used.add(rows[i])
@@ -175,21 +169,22 @@ def find_overlap(rows, output_file, skani_db, gtdb_index):
                 break
 
     with open(output_file, "w") as out:
-        out.write("Q name\tQ size\tQ start\tQ end\tT name\tT size\tT start\tT end\tPercent Identity\tQuery Species\tReference Species\tDivergence Time\tANI bt seqs(if div=unk)\tANI bt ref seqs(if species unk)\n")
+        out.write("Q name\tQ size\tQ start\tQ end\tT name\tT size\tT start\tT end\tPercent Identity\tQuery Species\tReference Species\tDivergence Time\tANI<95(if div=unk)\tANI<95 bt Ref Seqs\n")
         for l in new_rows:
             out.write(l + "\n")
 
 if __name__ == "__main__":
-    # Check if the correct number of command-line arguments is provided
-    #
     if len(sys.argv) != 4:
         print("Usage: python3 find_overlap.py <file of blatdiver output> <output file name> <medival_db>")
         sys.exit(1)
+    import pickle
     input_file = sys.argv[1]
     output = sys.argv[2]
-    skani_db= f"{sys.argv[3]}/skani_db"
-    gtdb_index = load_hash_table(f"{sys.argv[3]}/medival_db_index.pkl")
+    medival_db = sys.argv[3]
+    gtdb_index = load_hash_table(f"{medival_db}/medival_db_index.pkl")
+    with open(f"{medival_db}/skani_triangle_ani95.pkl", "rb") as f:
+        triangle_dict = pickle.load(f)
 
     rows = compress(input_file)
-    find_overlap(rows, output, skani_db, gtdb_index)
+    find_overlap(rows, output, triangle_dict, gtdb_index)
     print("Filtered file written to", output)

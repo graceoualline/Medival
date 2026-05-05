@@ -68,10 +68,11 @@ def make_seq_id_species_txt(seq_file, output, kraken_db):
     command = [
         "kraken2", "--db", kraken_db, "--output", kraken_output, "--use-names", seq_file
     ]
+    print(command)
     try:
         #run the command
         print("Running Kraken on", seq_file)
-        subprocess.run(command, check=True)
+        subprocess.run(command, check=True, capture_output=True, text=True)
         print(f"Kraken completed. Kraken output written to {kraken_output}. \nExtracting sequence id's and species...")
         species = process_all_sequences_kraken(kraken_output)
         
@@ -83,7 +84,7 @@ def make_seq_id_species_txt(seq_file, output, kraken_db):
                 f.write(f"{seq}\t{spec}\n")
         print(f"Data successfully written to {species_file}")
     except subprocess.CalledProcessError as e:
-        print(f"Error running Kraken on {seq_file}:\n{e.stderr.decode().strip()}")
+        print(f"Error running Kraken on {seq_file}:\n{e.stderr.strip()}")
 
 if __name__ == "__main__":
     # Check if the correct number of command-line arguments is provided

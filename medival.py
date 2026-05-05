@@ -1,4 +1,5 @@
 import os
+import pickle
 import tempfile
 import subprocess
 import multiprocessing as mp
@@ -19,21 +20,29 @@ import threading
 
 _worker_tree = None
 _worker_index = None
+_worker_triangle_dict = None
 
+# initialize worker so dont need to reload tree and hash table every time
+# _worker_triangle_dict is inherited via fork — do not pass via initargs
 def _init_worker(tree_dir, index_path):
     global _worker_tree, _worker_index
-    sys.stdout = open(os.devnull, 'w')
+    devnull = open(os.devnull, 'w')
+    sys.stdout = devnull
     _worker_tree = Divergence_Tree_Preprocessed(tree_dir)
     _worker_index = load_hash_table(index_path)
+    sys.stdout = sys.__stdout__
+    devnull.close()
 
+# surpressed what workers are printing out
 def _suppress_stdout(func, args):
     old_stdout = sys.stdout
-    sys.stdout = open(os.devnull, 'w')
+    devnull = open(os.devnull, 'w')
+    sys.stdout = devnull
     try:
         return func(args)
     finally:
-        sys.stdout.close()
         sys.stdout = old_stdout
+        devnull.close()
 
 def combine_and_cleanup_psl_files(args):
     header_lines = 5
@@ -55,11 +64,11 @@ def combine_and_cleanup_psl_files(args):
         if remove: os.rmdir(output_chunk_dir)
 
 def run_div_filter(job):
-    all_blat_raw, output_file, species, index, tree, tmp_fasta_path, database, minIdentity, skani_db = job
+    all_blat_raw, output_file, species, index, tree, tmp_fasta_path, database, minIdentity, skani_ani_dict = job
     #index = load_hash_table(index)
     try:
         #run the first round of filtering on the raw blat data
-        filter_blat(all_blat_raw, output_file, species, _worker_index, _worker_tree, tmp_fasta_path, database, minIdentity, skani_db)
+        filter_blat(all_blat_raw, output_file, species, _worker_index, _worker_tree, tmp_fasta_path, database, minIdentity, skani_ani_dict)
     except subprocess.CalledProcessError as e:
         print(f"Error running filter_blat on chunk {output_file}:\n{e.stderr.decode().strip()}")
     return 1
@@ -70,15 +79,13 @@ def run_specified_filter(job):
     #print(f"Processing {job}", flush=True)
     try:
         if job_type == "overlap":
-            infile, outfile, database, index = args
-            #index = load_hash_table(index)
+            infile, outfile = args
             rows = compress(infile)
-            find_overlap(rows, outfile, database, _worker_index)
+            find_overlap(rows, outfile, _worker_triangle_dict, _worker_index)
         elif job_type == "overlap_div":
-            to_filter_file, overlap_div_file, tree, database, index = args
-            #index = load_hash_table(index)
+            to_filter_file, overlap_div_file = args
             rows = compress(to_filter_file)
-            find_overlap_and_div(rows, overlap_div_file, _worker_tree, database, _worker_index)
+            find_overlap_and_div(rows, overlap_div_file, _worker_tree, _worker_triangle_dict, _worker_index)
     except subprocess.CalledProcessError as e:
         print(f"[{job_type}] Error on {args[1] if len(args) > 1 else 'unknown'}:\n{e.stderr.decode().strip()}")
     return 1
@@ -122,7 +129,7 @@ def run_all_filters(chunk_jobs, c: Config):
         for j in jobs:
             chunk_record, idx, original_id, species, tmp_fasta_path, all_blat_raw, output_file, c = j
             if os.path.exists(output_file): print(f"Skipping {output_file}, already exists.")
-            else: div_jobs.append((all_blat_raw, output_file, species, c.index, c.tree, tmp_fasta_path, c.blat_db, c.minIdentity, c.skani_db))
+            else: div_jobs.append((all_blat_raw, output_file, species, c.index, c.tree, tmp_fasta_path, c.blat_db, c.minIdentity, c.skani_ani_dict))
         if len(div_jobs) > 0:
             #print whatever command you are running
             with Pool(processes=c.max_threads, initializer=_init_worker, initargs=(c.tree, c.index)) as pool:
@@ -149,16 +156,18 @@ def run_all_filters(chunk_jobs, c: Config):
         if make_overlap:
             overlap = os.path.join(c.intermediate_dir, f"chunk_{idx}_{original_id}_overlap.tsv")
             if os.path.exists(overlap): print(f"Skipping {overlap}, already exists.")
-            else: filter_jobs.append(("overlap", (medival_output_file, overlap, c.skani_db, c.index)))
+            else: filter_jobs.append(("overlap", (medival_output_file, overlap)))
 
         # overlap div filter
         if make_overlap_div:
             overlap_div = os.path.join(c.intermediate_dir, f"chunk_{idx}_{original_id}_overlap_div.tsv")
             if os.path.exists(overlap_div): print(f"Skipping {overlap_div}, already exists.")
-            else: filter_jobs.append(("overlap_div", (medival_output_file, overlap_div, c.tree, c.skani_db, c.index)))
-    
+            else: filter_jobs.append(("overlap_div", (medival_output_file, overlap_div)))
+
     #run this first round of filtering
     if len(filter_jobs) > 0:
+        global _worker_triangle_dict
+        _worker_triangle_dict = c.skani_triangle_dict  # set before fork so workers inherit via copy-on-write
         with Pool(processes=c.max_threads, initializer=_init_worker, initargs=(c.tree, c.index)) as pool:
             #Progress bars
             with tqdm(total=len(filter_jobs), desc="Running chunks through overlap, overlap div, filters") as pbar:
@@ -168,15 +177,19 @@ def run_all_filters(chunk_jobs, c: Config):
     
 def run_blat(args):
     blat_dir, blat_file, ooc_file, query, output_path, minScore = args
-    # Construct the command
     command = ["blat", str(blat_dir / blat_file), query,
            f"-ooc={blat_dir / ooc_file}", "-tileSize=11",
            f"-minScore={minScore}", output_path, "-q=dna", "-t=dna"]
-    try:
-        #run the command
-        subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"Error running blat on {output_path}:\n{e.stderr.decode().strip()}")
+    for attempt in range(3):
+        try:
+            subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"Error running blat on {output_path} (attempt {attempt+1}/3):\n{e.stderr.decode().strip()}")
+            continue
+        if os.path.getsize(output_path) > 0:
+            return 1
+        print(f"Warning: blat produced empty output for {output_path} (attempt {attempt+1}/3), retrying...")
+    print(f"Error: blat failed to produce output for {output_path} after 3 attempts")
     return 1
 
 def run_blat_on_chunk(chunk_jobs, blat_files, ooc_files, c: Config):
@@ -203,15 +216,15 @@ def run_blat_on_chunk(chunk_jobs, blat_files, ooc_files, c: Config):
             for i in range(num_blat_db):
                 output_path = f"chunk_{idx}_{original_id}_part_{i}.psl"
                 output_path = os.path.join(output_chunk, output_path)
-                if os.path.exists(output_path): print(f"{output_path} skipped, already exists")
+                if os.path.exists(output_path) and os.path.getsize(output_path) > 0: print(f"{output_path} skipped, already exists")
                 else:
                     jobs.append((c.blat_db, blat_files[i], ooc_files[i], tmp_fasta_path, output_path, c.minScore))
     if len(jobs) > 0:
-        #print whatever command you are running
+        from concurrent.futures import as_completed
         with ThreadPoolExecutor(max_workers=c.max_threads) as executor:
-            #Progress bar
             with tqdm(total=len(jobs), desc="Running Sequence(s) through blat") as pbar:
-                for _ in executor.map(lambda args: _suppress_stdout(run_blat, args), jobs):
+                futures = [executor.submit(run_blat, job) for job in jobs]
+                for _ in as_completed(futures):
                     pbar.update()
 
 def run_combine_results(job):
@@ -315,7 +328,7 @@ def process_single_record(record, config):
             chunk_record.seq = chunk_seq
             # Set the id to be the chunk number
             idx = i // config.chunk_size
-            chunk_record.id = f"{record.id}_chunk_{idx}"
+            chunk_record.id = f"{record.id}"
             chunk_record.description = f"{record.description} chunk {idx}"
             
             # Get a tmp file of the sequence
@@ -390,6 +403,76 @@ def prepare_jobs_parallel(c: Config, n_processes=None):
     else:
         print(f"Using species assignments from: {c.speciesFile} (updated with auto-detected entries)")
     
+    # Run skani search to find all reference sequences with >= 95% ANI to each query
+    skani_pkl = os.path.join(c.intermediate_dir, "skani_ani_dict.pkl")
+
+    if os.path.exists(skani_pkl):
+        print(f"Skipping skani search: {skani_pkl} already exists. Loading...")
+        with open(skani_pkl, "rb") as f:
+            skani_ani_dict = pickle.load(f)
+    else:
+        skani_tsv = os.path.join(c.intermediate_dir, "skani_query_refs_95ani.tsv")
+
+        if not os.path.exists(skani_tsv):
+            print("\nRunning skani search to find sequences with >= 95% ANI matches...")
+            try:
+                result = subprocess.run(
+                    [
+                        "skani", "search",
+                        "--qi", str(c.input_fasta),
+                        "-t", str(n_processes),
+                        "-s", "90",
+                        "-d", str(c.skani_sketch_db),
+                        "-o", skani_tsv
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True
+                )
+                if result.stderr:
+                    print(result.stderr.strip())
+            except subprocess.CalledProcessError as e:
+                print(f"ERROR running skani search: {e.stderr}")
+                raise
+            except FileNotFoundError:
+                print("ERROR: skani not found in PATH.")
+                raise
+        else:
+            print(f"Skipping skani search: {skani_tsv} already exists.")
+
+        # Build dict: query_id -> [ref_ids with ANI >= 95]
+        skani_ani_dict = {}
+        with open(skani_tsv, "r") as f:
+            header = f.readline().strip().split("\t")
+            try:
+                ani_col = header.index("ANI")
+                query_col = header.index("Query_name")
+                ref_col = header.index("Ref_name")
+            except ValueError:
+                ani_col, query_col, ref_col = 2, 6, 5
+
+            for line in f:
+                parts = line.strip().split("\t")
+                if len(parts) <= max(ani_col, query_col, ref_col):
+                    continue
+                try:
+                    ani = float(parts[ani_col])
+                except ValueError:
+                    continue
+                if ani < 95.0:
+                    continue
+                query_id = parts[query_col].split()[0]
+                ref_id = parts[ref_col].split()[0]
+                if query_id not in skani_ani_dict:
+                    skani_ani_dict[query_id] = []
+                skani_ani_dict[query_id].append(ref_id)
+
+        with open(skani_pkl, "wb") as f:
+            pickle.dump(skani_ani_dict, f)
+        print(f"  Saved ANI dict to {skani_pkl}")
+
+    print(f"  Found ANI >= 95% matches for {len(skani_ani_dict):,} query sequence(s).")
+    c.skani_ani_dict = skani_ani_dict
     return all_chunk_jobs, all_tmp_fastas
 
 def main():
@@ -416,7 +499,7 @@ def main():
         chunk_size=merged_config['chunk'],
         output_dir=merged_config['output'],
         blat_db=Path(f"{merged_config['database']}/blat_2bit_db"),
-        skani_db=Path(f"{merged_config['database']}/skani_db"),
+        skani_sketch_db=Path(f"{merged_config['database']}/skani_sketch_db"),
         index=merged_config['index'],
         max_threads=merged_config['threads'],
         kraken_db=merged_config['kraken'],
@@ -433,11 +516,20 @@ def main():
         intermediate_dir=os.path.join(merged_config['output'], f"intermediate_{merged_config['output']}_files")
     )
 
+    triangle_pkl = Path(f"{merged_config['database']}/skani_triangle_ani95.pkl")
+    if triangle_pkl.exists():
+        with open(triangle_pkl, "rb") as f:
+            c.skani_triangle_dict = pickle.load(f)
+        print(f"Loaded skani triangle dict: {len(c.skani_triangle_dict):,} pairs")
+    else:
+        print(f"Warning: skani triangle pkl not found at {triangle_pkl}. Overlap-div ANI lookup will fall back to crude ANI.")
+
     print("Configuration:")
     print(f"  Input FASTA: {c.input_fasta}")
     print(f"  Output Directory: {c.output_dir}")
     print(f"  Blat Database: {c.blat_db}")
-    print(f"  Skani Database: {c.skani_db}")
+    print(f"  Skani Sketch Database: {c.skani_sketch_db}")
+    print(f"  Skani Triangle PKL: {triangle_pkl}")
     print(f"  Index: {c.index}")
     print(f"  Threads: {c.max_threads}")
     print(f"  Chunk Size: {c.chunk_size}")

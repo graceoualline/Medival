@@ -1,6 +1,7 @@
 import yaml
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Dict, List
 import argparse
 
 @dataclass
@@ -9,7 +10,7 @@ class Config:
     chunk_size: int # how we want to split up the query to run in blat
     output_dir: str # output dir name
     blat_db: Path # blat db path
-    skani_db: Path # skani db path
+    skani_sketch_db: Path # skani sketch db path
     index: str #index that maps sequences in the database to their species and locations
     max_threads: int # number of threads the user wants to use
     kraken_db: Path # path to the kraken database
@@ -24,6 +25,8 @@ class Config:
     species_mode: str # code defined mode to help know how species are being defined
     seq_species_dict: str # if file given, the dictionary created relating dict[seq_id]: species
     intermediate_dir: str # the directory that will contain intermediate files that are used to build the final files
+    skani_ani_dict: Dict[str, List[str]] = field(default_factory=dict) # query_id -> ref_ids with >= 95% ANI
+    skani_triangle_dict: Dict = field(default_factory=dict) # (min_id, max_id) -> ANI for all db pairs >= 95%
 
 def parse_args():
     parser = argparse.ArgumentParser(
