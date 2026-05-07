@@ -91,7 +91,6 @@ def compress(input_file):
     compressed = []
     for row_set in groups.values():
         rows = sorted(list(row_set), key=lambda x: (int(x[qs]), int(x[qe])))
-        print(rows[0][0])
         if len(rows) <= 1:
             continue
 
@@ -165,7 +164,6 @@ def find_overlap_and_div_max(rows, output_file, tree, triangle_dict, index):
         groups[row[0]].append(row)
 
     for qrows in groups.values():
-        print(qrows[0][0], len(qrows))
         _pair_group(qrows, new_rows, tree, triangle_dict, index,
                     div_cache, ani_cache)
 
@@ -193,10 +191,6 @@ def _pair_group(rows, new_rows, tree, triangle_dict, index,
        are always seen first, so the cap rarely drops a real best pair while
        bounding worst-case complexity to O(n * max_candidates_per_row).
     """
-    #max_candidates_per_row=math.sqrt(len(rows))*2
-    #max_candidates_per_row=500
-    #max_candidates_per_row=None
-    #print("max_candidates_per_row", max_candidates_per_row)
     rows = sorted(rows, key=lambda x: (int(x[_qs]), int(x[_qe])))
     n = len(rows)
     if n <= 1:

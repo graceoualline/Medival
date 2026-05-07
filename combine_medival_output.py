@@ -22,9 +22,9 @@ def adjust_and_merge_tsvs(chunk_dir, chunk_size, output_file, to_combine, config
         offset = int(idx * chunk_size)
 
         try:
-            df = pd.read_csv(filename, sep='\t', low_memory=False)
+            df = pd.read_csv(filename, sep='\t', low_memory=False, comment='#')
         except:
-            df = pd.read_csv(filename, sep='\t', on_bad_lines='skip', low_memory=False)
+            df = pd.read_csv(filename, sep='\t', on_bad_lines='skip', low_memory=False, comment='#')
             print(f"Warning, {filename} has malformed lines.")
         total_len += len(df)
 
@@ -50,7 +50,7 @@ def adjust_and_merge_tsvs(chunk_dir, chunk_size, output_file, to_combine, config
         if all_files:
             # Read just the header from the first available file
             try:
-                empty_df = pd.read_csv(all_files[0], sep='\t', nrows=0)
+                empty_df = pd.read_csv(all_files[0], sep='\t', nrows=0, comment='#')
                 if config_header:
                     with open(output_file, 'w') as f:
                         f.write(config_header)

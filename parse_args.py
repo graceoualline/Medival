@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List
 import argparse
+from datetime import datetime
 
 @dataclass
 class Config:
@@ -346,7 +347,10 @@ def validate_required_params(config_dict):
 def format_config_header(config_dict):
     """Return a # comment block summarising the run configuration."""
     skip = {'seq_species_dict'}
-    lines = ['# MEDIVAL run configuration']
+    lines = [
+        '# MEDIVAL run configuration',
+        f'# date: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}',
+    ]
     for key, val in config_dict.items():
         if key not in skip:
             lines.append(f'# {key}: {val}')
