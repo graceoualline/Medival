@@ -16,11 +16,9 @@ class Config:
     max_threads: int # number of threads the user wants to use
     kraken_db: Path # path to the kraken database
     tree: str # the folder that contains the tree and its preprocessing files
-    remove: bool # is false when I am debugging and dont want files to be deleted
     species: str # user defined species of all of the sequences given in a query
     minScore: int # Is the minimum alignment score threshold, sets blat's parameter -minScore, default 30
     minIdentity: int # Is the threshold of the minimum percent identity a hit must have. Default: 90. Percent identity = ( match / Q_end - Q_start )*100
-    overlap_div_filter: bool # is false when you do not want to do an overlap and divergence filter
     speciesFile: str # is a file that defines the species of every sequence in the fasta file
     species_mode: str # code defined mode to help know how species are being defined
     seq_species_dict: str # if file given, the dictionary created relating dict[seq_id]: species
@@ -79,46 +77,6 @@ def parse_args():
     parser.add_argument(
         "--cluster-size", dest="cluster_size", type=int, help="(Optional) Combine any regions within this many bp of each other (default: 2500)")
 
-    # BooleanOptionalAction
-    class BooleanOptionalAction(argparse.Action):
-        def __init__(self, option_strings, dest, default=None, type=None, choices=None,required=False,help=None, metavar=None):
-            _option_strings = []
-            for option_string in option_strings:
-                _option_strings.append(option_string)
-
-                if option_string.startswith('--'):
-                    option_string = '--no-' + option_string[2:]
-                    _option_strings.append(option_string)
-                elif option_string.startswith('-'):
-                    raise ValueError('BooleanOptionalAction not supported for short options')
-
-            super().__init__(option_strings=_option_strings,dest=dest,nargs=0,default=default,type=type,choices=choices,required=required,help=help,metavar=metavar)
-
-        def __call__(self, parser, namespace, values, option_string=None):
-            if option_string and option_string.startswith('--no-'):
-                setattr(namespace, self.dest, False)
-            else:
-                setattr(namespace, self.dest, True)
-
-        def format_usage(self):
-            return ' | '.join(self.option_strings)
-
-    # Boolean arguments using the custom BooleanOptionalAction
-    parser.add_argument(
-        "--remove",
-        action=BooleanOptionalAction,
-        default=None,
-        help="(Optional), Clean up temporary files (default: False). Use --remove to enable, --no-remove to disable."
-    )
-    
-    parser.add_argument(
-        "--overlap-div-filter", 
-        dest="overlap_div_filter",
-        action=BooleanOptionalAction,
-        default=None,
-        help="Enable overlap and divergence filter (default: False). Use --overlap-div-filter to enable, --no-overlap-div-filter to disable."
-    )
-
     return parser.parse_args()
 
 def load_config_file(config_path):
@@ -141,9 +99,8 @@ def validate_config_keys(config_data):
     # Define all valid configuration keys
     valid_keys = {
         'query', 'output', 'database', 'tree', 'index', 'kraken',
-        'threads', 'chunk', 'remove', 'species', 'minScore', 'minIdentity',
-        'overlap_div_filter', "speciesFile",
-        'size_filter', 'cluster_size'
+        'threads', 'chunk', 'species', 'minScore', 'minIdentity',
+        'speciesFile', 'size_filter', 'cluster_size'
     }
     
     # Check for unrecognized keys
@@ -159,16 +116,6 @@ def validate_config_keys(config_data):
             print(f"  - {key}")
         print(f"\nPlease check your config file for typos or unsupported parameters.")
         raise ValueError(f"Invalid config file parameters: {', '.join(sorted(unrecognized_keys))}")
-    
-    # Optionally, validate boolean values in config
-    bool_keys = {'remove', 'overlap_div_filter'}
-    for key in bool_keys:
-        if key in config_data:
-            value = config_data[key]
-            if not isinstance(value, (bool, int, str)):
-                raise ValueError(f"Config parameter '{key}' must be a boolean, integer, or string, got {type(value).__name__}")
-            if isinstance(value, str) and value.lower() not in ('true', 'false', 'yes', 'no', '1', '0', 'on', 'off'):
-                raise ValueError(f"Config parameter '{key}' has invalid boolean value: '{value}'. Use true/false, yes/no, 1/0, or on/off")
     
     # Validate integer parameters
     int_keys = {'threads', 'chunk', 'minScore', 'minIdentity', 'size_filter', 'cluster_size'}
@@ -246,12 +193,10 @@ def merge_config_and_args(args, config_data=None):
         'kraken': ('kraken', None),
         'threads': ('threads', 1),
         'chunk': ('chunk', 100000),
-        'remove': ('remove', False),
         'species': ('species', None),
         'speciesFile': ('speciesFile', None),
         'minScore': ('minScore', 30),
         'minIdentity': ('minIdentity', 90),
-        'overlap_div_filter': ('overlap_div_filter', False),
         'size_filter': ('size_filter', 250),
         'cluster_size': ('cluster_size', 2500),
         'seq_species_dict': ('seq_species_dict', None),
@@ -271,16 +216,6 @@ def merge_config_and_args(args, config_data=None):
         else:
             merged_config[config_key] = config_value
     
-    bool_params = ['remove', 'overlap_div_filter']
-    for param in bool_params:
-        value = merged_config[param]
-        if isinstance(value, str):
-            # Handle string representations from config files
-            merged_config[param] = value.lower() in ('true', 'yes', '1', 'on')
-        elif isinstance(value, int):
-            # Handle integer representations
-            merged_config[param] = bool(value)
-
     if merged_config['index'] == 'default_placeholder' or merged_config['index'] is None:
         if merged_config['database']:
             merged_config['index'] = f"{merged_config['database']}/medival_db_index.pkl"

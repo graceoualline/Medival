@@ -3,7 +3,7 @@ import pickle
 import tempfile
 import subprocess
 import multiprocessing as mp
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool
 from Bio import SeqIO
 from datetime import datetime
 from functools import partial
@@ -13,7 +13,6 @@ from combine_medival_output import *
 from find_overlap_and_div_max import *
 from parse_args import *
 from build_database_index import *
-import time
 from concurrent.futures import ThreadPoolExecutor
 import threading
 from size_cluster_filter import *
@@ -46,7 +45,7 @@ def _suppress_stdout(func, args):
 
 def combine_and_cleanup_psl_files(args):
     header_lines = 5
-    output_chunk_dir, combined_path, remove, config_header = args
+    output_chunk_dir, combined_path, config_header = args
 
     if os.path.exists(combined_path):
         print(f"Skipping {combined_path}, already exists.")
@@ -62,28 +61,22 @@ def combine_and_cleanup_psl_files(args):
                     lines = infile.readlines()
                     # Now find where the alignment lines begin
                     outfile.writelines(lines[header_lines:])
-                if remove: os.remove(fname)
-        if remove: os.rmdir(output_chunk_dir)
 
 def run_div_filter(job):
-    all_blat_raw, output_file, species, index, tree, tmp_fasta_path, database, minIdentity, skani_ani_dict = job
-    #index = load_hash_table(index)
+    all_blat_raw, output_file, species, _index, _tree, tmp_fasta_path, database, minIdentity, skani_ani_dict = job
     try:
-        #run the first round of filtering on the raw blat data
         filter_blat(all_blat_raw, output_file, species, _worker_index, _worker_tree, tmp_fasta_path, database, minIdentity, skani_ani_dict)
     except subprocess.CalledProcessError as e:
         print(f"Error running filter_blat on chunk {output_file}:\n{e.stderr.decode().strip()}")
     return 1
 
 def run_specified_filter(job):
-    job_type, args = job
+    to_filter_file, overlap_div_file = job
     try:
-        if job_type == "overlap_div":
-            to_filter_file, overlap_div_file = args
-            rows = compress(to_filter_file)
-            find_overlap_and_div_max(rows, overlap_div_file, _worker_tree, _worker_triangle_dict, _worker_index)
+        rows = compress(to_filter_file)
+        find_overlap_and_div_max(rows, overlap_div_file, _worker_tree, _worker_triangle_dict, _worker_index)
     except subprocess.CalledProcessError as e:
-        print(f"[{job_type}] Error on {args[1] if len(args) > 1 else 'unknown'}:\n{e.stderr.decode().strip()}")
+        print(f"Error on {overlap_div_file}:\n{e.stderr.decode().strip()}")
     return 1
 
 def run_all_filters(chunk_jobs, c: Config):
@@ -95,7 +88,7 @@ def run_all_filters(chunk_jobs, c: Config):
         
         #make one big file that combines all of the blat outputs
         all_blat_raw = os.path.join(c.intermediate_dir, f"chunk_{idx}_{original_id}_blat_output.tsv")
-        if not(os.path.exists(all_blat_raw)): blat_combine_jobs.append((output_chunk_dir, all_blat_raw, c.remove, c.config_header))
+        if not(os.path.exists(all_blat_raw)): blat_combine_jobs.append((output_chunk_dir, all_blat_raw, c.config_header))
         
         #then filter all blat results and add divergence or ani
         output_file = os.path.join(c.intermediate_dir, f"chunk_{idx}_{original_id}_first_div_output.tsv")
@@ -106,55 +99,45 @@ def run_all_filters(chunk_jobs, c: Config):
     overlap_div_final_name = os.path.join(c.output_dir, f"{output_name}_overlap_div.tsv")
     medival_final_name = os.path.join(c.output_dir, f"{output_name}_first_div_output.tsv")
     
-    #first, combine all blat files
-    if os.path.exists(blat_final_name): print(f"Skipping {blat_final_name}, already exists.")
+    if os.path.exists(blat_final_name):
+        print(f"Skipping {blat_final_name}, already exists.")
     else:
-        if len(blat_combine_jobs) > 0:
+        if blat_combine_jobs:
             with ThreadPoolExecutor(max_workers=c.max_threads) as executor:
-                #Progress bar
                 with tqdm(total=len(blat_combine_jobs), desc="Combining blat data") as pbar:
                     for _ in executor.map(lambda args: _suppress_stdout(combine_and_cleanup_psl_files, args), blat_combine_jobs):
                         pbar.update()
         print("Finished combining blat data.")
-    
-    #run divergence filter
+
     div_jobs = []
-    if os.path.exists(medival_final_name): print(f"Skipping {medival_final_name}, already exists.")
+    if os.path.exists(medival_final_name):
+        print(f"Skipping {medival_final_name}, already exists.")
     else:
         for j in jobs:
             chunk_record, idx, original_id, species, tmp_fasta_path, all_blat_raw, output_file, c = j
             if os.path.exists(output_file): print(f"Skipping {output_file}, already exists.")
             else: div_jobs.append((all_blat_raw, output_file, species, c.index, c.tree, tmp_fasta_path, c.blat_db, c.minIdentity, c.skani_ani_dict))
-        if len(div_jobs) > 0:
-            #print whatever command you are running
+        if div_jobs:
             with Pool(processes=c.max_threads, initializer=_init_worker, initargs=(c.tree, c.index)) as pool:
-                #Progress bar
                 with tqdm(total=len(div_jobs), desc="Running chunks through first divergence filter") as pbar:
                     for _ in pool.imap_unordered(run_div_filter, div_jobs):
                         pbar.update()
         print("Finished running divergence filter.")
 
-    #run overlap_div filter
-    make_overlap_div = c.overlap_div_filter
-    if make_overlap_div and os.path.exists(overlap_div_final_name):
-        print(f"Skipping {overlap_div_final_name}, already exists.")
-        make_overlap_div = False
     filter_jobs = []
-    for j in jobs:
-        chunk_record, idx, original_id, species, tmp_fasta_path, all_blat_raw, medival_output_file, c = j
-
-        # overlap div filter
-        if make_overlap_div:
+    if os.path.exists(overlap_div_final_name):
+        print(f"Skipping {overlap_div_final_name}, already exists.")
+    else:
+        for j in jobs:
+            chunk_record, idx, original_id, species, tmp_fasta_path, all_blat_raw, medival_output_file, c = j
             overlap_div = os.path.join(c.intermediate_dir, f"chunk_{idx}_{original_id}_overlap_div.tsv")
             if os.path.exists(overlap_div): print(f"Skipping {overlap_div}, already exists.")
-            else: filter_jobs.append(("overlap_div", (medival_output_file, overlap_div)))
+            else: filter_jobs.append((medival_output_file, overlap_div))
 
-    #run this first round of filtering
-    if len(filter_jobs) > 0:
+    if filter_jobs:
         global _worker_triangle_dict
         _worker_triangle_dict = c.skani_triangle_dict  # set before fork so workers inherit via copy-on-write
         with Pool(processes=c.max_threads, initializer=_init_worker, initargs=(c.tree, c.index)) as pool:
-            #Progress bars
             with tqdm(total=len(filter_jobs), desc="Running chunks through overlap div filter") as pbar:
                 for _ in pool.imap_unordered(run_specified_filter, filter_jobs):
                     pbar.update()
@@ -213,45 +196,34 @@ def run_blat_on_chunk(chunk_jobs, blat_files, ooc_files, c: Config):
                     pbar.update()
 
 def run_combine_results(job):
-    output_dir, chunk_size, to_combine, output_path, remove, config_header = job
+    output_dir, chunk_size, to_combine, output_path, config_header = job
     try:
-        to_remove = adjust_and_merge_tsvs(output_dir, chunk_size, output_path, to_combine, config_header)
-        if remove: 
-            for f in to_remove: os.remove(f)
+        adjust_and_merge_tsvs(output_dir, chunk_size, output_path, to_combine, config_header)
     except subprocess.CalledProcessError as e:
         print(f"Error combining results {output_path}: {e}")
     return 1
 
 def combine_all_results(c: Config):
-    #once all jobs are finished, combine all of the filters into one place:
-    #parent_dir = os.path.dirname(c.output_dir)
     output_name = os.path.basename(c.output_dir)
-    #python3 combine_medival_output.py <medival_output_directory> <chunk_size> <which files to combine ex. *first_div_output.tsv> <output_file>
-    input_output = [("blat_output.tsv", os.path.join(c.output_dir, f"{output_name}_blat_results.tsv")),
-                    ("first_div_output.tsv", os.path.join(c.output_dir, f"{output_name}_first_div_output.tsv"))]
-    if c.overlap_div_filter:
-        input_output.append(("overlap_div.tsv", os.path.join(c.output_dir, f"{output_name}_overlap_div.tsv")))
+    input_output = [
+        ("blat_output.tsv",      os.path.join(c.output_dir, f"{output_name}_blat_results.tsv")),
+        ("first_div_output.tsv", os.path.join(c.output_dir, f"{output_name}_first_div_output.tsv")),
+        ("overlap_div.tsv",      os.path.join(c.output_dir, f"{output_name}_overlap_div.tsv")),
+    ]
 
-    jobs = []
-    for to_combine, output in input_output:
-        if not os.path.exists(output): jobs.append((c.intermediate_dir, c.chunk_size, to_combine, output, c.remove, c.config_header))
-    if len(jobs) > 0:
-        #print whatever command you are running
+    jobs = [(c.intermediate_dir, c.chunk_size, to_combine, output, c.config_header)
+            for to_combine, output in input_output if not os.path.exists(output)]
+    if jobs:
         with Pool(processes=c.max_threads) as pool:
-            #Progress bar
             with tqdm(total=len(jobs), desc="Combining all results") as pbar:
                 for _ in pool.imap_unordered(run_combine_results, jobs):
                     pbar.update()
 
-    # then run the final size and clustering filter
-    if c.overlap_div_filter:
-        input_path = os.path.join(c.output_dir, f"{output_name}_overlap_div.tsv")
-    else:
-        input_path = os.path.join(c.output_dir, f"{output_name}_first_div_output.tsv")
+    input_path = os.path.join(c.output_dir, f"{output_name}_overlap_div.tsv")
     medival_final_name = os.path.join(c.output_dir, f"{output_name}_final_regions.tsv")
     medival_summary_final_name = os.path.join(c.output_dir, f"{output_name}_final_regions_summary.tsv")
-    if os.path.exists(medival_final_name): print(f"Skipping {medival_final_name}, already exists.")
-    if os.path.exists(medival_summary_final_name) and os.path.exists(medival_final_name): print(f"Skipping {medival_final_name}, {medival_summary_final_name}, already exists.")
+    if os.path.exists(medival_summary_final_name) and os.path.exists(medival_final_name):
+        print(f"Skipping {medival_final_name}, {medival_summary_final_name}, already exist.")
     else:
         size_filter_cluster(input_path, medival_final_name, medival_summary_final_name, c.size_filter, c.cluster_size, False, c.index, c.config_header)
 
@@ -500,12 +472,10 @@ def main():
         max_threads=merged_config['threads'],
         kraken_db=merged_config['kraken'],
         tree=merged_config['tree'],
-        remove=merged_config['remove'],
         species=merged_config['species'],
         minScore=merged_config['minScore'],
         minIdentity=merged_config['minIdentity'],
-        overlap_div_filter=merged_config['overlap_div_filter'],
-        speciesFile = merged_config["speciesFile"],
+        speciesFile=merged_config["speciesFile"],
         species_mode = merged_config["species_mode"],
         seq_species_dict = merged_config["seq_species_dict"],
         size_filter = merged_config["size_filter"],
@@ -534,10 +504,8 @@ def main():
     print(f"  Species: {c.species or 'Auto-detect with Kraken'}")
     print(f"  Min Score: {c.minScore}")
     print(f"  Min Identity: {c.minIdentity}")
-    print(f"  Overlap Div Filter: {c.overlap_div_filter}")
     print(f"  Size Filter: {c.size_filter} bp")
     print(f"  Cluster Size: {c.cluster_size} bp")
-    print(f"  Clean up files: {c.remove}")
     print(f"  Species detect mode: {c.species_mode}")
     print(f"  Species file: {c.speciesFile}\n")
 

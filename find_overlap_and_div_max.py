@@ -90,7 +90,7 @@ def compress(input_file):
 
     compressed = []
     for row_set in groups.values():
-        rows = sorted(list(row_set), key=lambda x: (int(x[qs]), int(x[qe])))
+        rows = sorted(list(row_set), key=lambda x: (int(x[qs]), int(x[qe]), x[_tname]))
         if len(rows) <= 1:
             continue
 
@@ -175,22 +175,7 @@ def find_overlap_and_div_max(rows, output_file, tree, triangle_dict, index):
 
 def _pair_group(rows, new_rows, tree, triangle_dict, index,
                 div_cache, ani_cache):
-    """Process all rows for a single Q name.
-
-    Two optimisations over the naive O(n*k) approach:
-
-    1. Lazy quality check — tree.divergence / lookup_ani_triangle are only
-       called at *pop* time, not during the sweep.  Pairs whose rows get
-       consumed by a larger-overlap pair are popped, skipped via `used`, and
-       never pay for the expensive check at all.
-
-
-    2. Per-row sweep cap — the inner loop is limited to
-       max_candidates_per_row overlapping rows per row i.  Because rows are
-       sorted by Q start the closest-starting (highest-overlap) candidates
-       are always seen first, so the cap rarely drops a real best pair while
-       bounding worst-case complexity to O(n * max_candidates_per_row).
-    """
+    """Process all rows for a single Q name."""
     rows = sorted(rows, key=lambda x: (int(x[_qs]), int(x[_qe])))
     n = len(rows)
     if n <= 1:
@@ -240,7 +225,6 @@ def _pair_group(rows, new_rows, tree, triangle_dict, index,
     # ---------------------------------------------------------------------- #
     used = set()
     while heap:
-        if len(heap) % 10000000 == 0: print(len(heap))
         _neg_ov, i, j = heapq.heappop(heap)
         if i in used or j in used:
             continue  # already consumed — skip with zero quality-check cost
