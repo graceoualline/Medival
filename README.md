@@ -3,7 +3,7 @@
 **M**obile (Genetic) **E**lement finder using **DIV**ergence and **AL**ignment. A parallelized sequence alignment tool for detecting Mobile Genetic Elements (MGEs) using BLAT and phylogenetic divergence analysis.
 ## Overview
 
-medival is designed to find novel MGEs through optimized threading of BLAT (BLAST-Like Alignment Tool) operations, and advanced filtering. It splits large sequences into manageable chunks, runs BLAT searches in parallel across multiple database files, and applies divergence filtering and sequence analysis to identify potential MGEs. The tool is particularly effective for horizontal gene transfer detection.
+Medival finds novel MGEs by splitting query sequences into chunks, running BLAT searches in parallel across a split GTDB database, applying divergence filtering, and then running an overlap-divergence filter to identify regions supported by alignments to distantly related species. It uses the TimeTree of Life to calculate divergence times and skani for average nucleotide identity (ANI) lookups. The tool is particularly effective for horizontal gene transfer detection.
 
 ## Installation
 Install medival:
@@ -18,9 +18,10 @@ You should have the following files:
 ├── divergence_tree.tar.gz
 ├── kraken2_db.tar.gz
 └── medival_gtdb_db
-    ├── blat_2bit_db -> /usr1/shared/medival_gtdb_db
+    ├── blat_2bit_db
     ├── medival_db_index.tar.gz
-    └── skani_db.tar.gz
+    ├── skani_sketch_db.tar.gz
+    └── skani_triangle_ani95.pkl
 # you can also download these if you want to build the db/index yourself:
 gtdb_all_seqs.tar.gz
 all_gtdb_seq_kraken_species.tar.gz
@@ -29,10 +30,7 @@ Decompress the files:
 ```
 tar -xzvf divergence_tree.tar.gz
 tar -xzvf kraken2_db.tar.gz
-tar -xzvf medival_gtdb_db
-tar -xzvf blat_2bit_db -> /usr1/shared/medival_gtdb_db
 tar -xzvf medival_db_index.tar.gz
-tar -xzvf skani_db.tar.gz
 ```
 After decompressing the files, you should have the following:
 ```
@@ -44,17 +42,18 @@ divergence_tree/
 └── TimeTree_v5.tour.npy
 
 medival_gtdb_db/
-├── blat_2bit_db
+├── blat_2bit_db/
 │   ├── split_1_output.2bit
 │   ├── split_1_output.ooc
-...
+│   ...
 │   ├── split_137_output.2bit
 │   └── split_137_output.ooc
 ├── medival_db_index.pkl
-└── skani_db
-    └── (all sequences of the gtdb)
+├── skani_sketch_db/         ← skani sketches for query-vs-reference ANI
+│   └── (sketched sequences)
+└── skani_triangle_ani95.pkl ← pre-computed all-vs-all ANI ≥ 95% pairs
 
-kraken2_db
+kraken2_db/
 ├── hash.k2d
 ├── opts.k2d
 ├── taxo.k2d
@@ -62,10 +61,10 @@ kraken2_db
 ```
 ### Required Python Packages
 ```bash
-pip install biopython tqdm
+pip install biopython tqdm pyyaml
 ```
 ### Prerequisites
-Please ensure you have the following tools downloaded:
+Please ensure you have the following tools installed:
 - Python 3.7+
 - BLAT: https://hgdownload.cse.ucsc.edu/admin/exe/linux.x86_64/blat/
   ```bash
@@ -74,6 +73,10 @@ Please ensure you have the following tools downloaded:
 - Kraken2: https://github.com/DerrickWood/kraken2/wiki/Manual
   ```bash
   conda install -c bioconda kraken2
+  ```
+- skani: https://github.com/bluenote-1577/skani
+  ```bash
+  conda install -c bioconda skani
   ```
 
 ## Usage
@@ -102,14 +105,11 @@ python3  /usr1/gouallin/blat/blat_pipeline/medival.py --config /usr1/gouallin/bl
 python3 /usr1/gouallin/blat/blat_pipeline/medival.py \
   -q /usr1/gouallin/blat/blat_pipeline/test/acrB.fasta \
   -o medival_test_results_acrB \
-  -d /usr1/shared/medival_gtdb_db/ \
-  -tr /usr1/gouallin/blat/divergence_tree \
-  -k /usr1/shared/kraken2_custom_db/ \
+  -d /usr1/shared/all_medival_dbs/medival_gtdb_db/ \
+  -tr /usr1/shared/all_medival_dbs/divergence_tree/ \
+  -k /usr1/shared/all_medival_dbs/kraken2_custom_db/ \
   -t 20 \
-  --no-remove \
-  -minIdentity 90 \
-  --overlap_filter \
-  --overlap_div_filter
+  -minIdentity 90
 ```
 ### Parameters
 
@@ -125,65 +125,63 @@ python3 /usr1/gouallin/blat/blat_pipeline/medival.py \
 #### Optional Arguments
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-|`-t, --threads`| 1 | Number of threads to use - **Highly recommend using more threads to speed up the program.**| 
-| `-i, --index` | Taken from prebuilt medival database | Is a pkl formated file that describes all sequences in the Blat DB, its species, length, and leaf name in the phylogenetic tree. If you built your own index with separate species, you can define that index here.
-| `-c, --chunk`| 100000| Chunk size for sequence splitting |
-| `-s, --species`| auto-detect| Predefined species name (replace spaces with '_'). For multifasta files, applies to all sequences.|
-| `-minScore`| 30| Minimum BLAT alignment score |
-| `-minIdentity`|0| Minimum percent identity threshold|
-| `--remove, --no-remove`|False| Clean up redundant files after running. Use --remove to enable, --no-remove to disable.|
-| `--overlap-filter, --no-overlap-filter`|False| Enable overlap filter. Use --overlap-filter to enable, --no-overlap-filter to disable.|
-| `--overlap-div-filter, --no-overlap-div-filter`|False| Enable overlap and divergence filter. Use --overlap-div-filter to enable, --no-overlap-div-filter to disable.|
+| `-t, --threads` | 1 | Number of threads. **Highly recommended to increase.** |
+| `-i, --index` | From database | `.pkl` file mapping sequence IDs to species, length, and tree leaf name. Use a custom index to override species assignments. |
+| `-c, --chunk` | 100000 | Chunk size (bp) for splitting large sequences before BLAT. |
+| `-s, --species` | auto-detect | Species name for all sequences in the input FASTA (replace spaces with `_`). Cannot be used with `--speciesFile`. |
+| `--speciesFile` | auto-detect | Tab-separated file assigning a species to each sequence ID. Cannot be used with `-s`. |
+| `-minScore` | 30 | Minimum BLAT alignment score. |
+| `-minIdentity` | 90 | Minimum percent identity: `(matches / (Q_end − Q_start)) × 100`. |
+| `--size-filter` | 250 | Discard final regions smaller than this many bp. |
+| `--cluster-size` | 2500 | Merge final regions within this many bp of each other. |
 
 #### Config File
 Create a YAML configuration file for repeated analyses:
 ```yaml
-# medival Configuration File
-# Required parameters
+# Required
 query: sequences.fasta
 output: medival_results
-database: medival_gtdb_db/
-tree: divergence_tree/
-kraken: kraken2_custom_db/
+database: /path/to/medival_gtdb_db/
+tree: /path/to/divergence_tree/
+kraken: /path/to/kraken2_db/
 
-# Optional parameters
+# Optional
 threads: 20
 chunk: 100000
-minIdentity: 95
-index: medival_gtdb_db/medival_db_index.pkl
-overlap_filter: false
-overlap_div_filter: false
-remove: false
-species: None  # Auto-detect with Kraken2
 minScore: 30
-minIdentity: 95 
+minIdentity: 90
+size_filter: 250
+cluster_size: 2500
+species: Null          # Null = auto-detect with Kraken2
+speciesFile: Null      # Null = auto-detect with Kraken2
+index: Null            # Null = use index bundled in database
 ```
 
 ### Example Commands
 
-#### Basic Command with GTDB Database and 20 threads
+#### Basic command
 ```bash
-python medival.py \
+python3 medival.py \
   -q my_sequences.fasta \
   -o results_dir \
-  -d medival_gtdb_db \
-  -tr divergence_tree \
-  -k kraken2_custom_db \
-  -t 20 \
+  -d /path/to/medival_gtdb_db/ \
+  -tr /path/to/divergence_tree/ \
+  -k /path/to/kraken2_db/ \
+  -t 20
 ```
 
-#### Run with additional filtering:
+#### With stricter filtering and custom thresholds
 ```bash
-python medival.py \
+python3 medival.py \
   -q my_sequences.fasta \
   -o results_dir \
-  -d medival_gtdb_db \
-  -tr divergence_tree \
-  -k kraken2_custom_db \
+  -d /path/to/medival_gtdb_db/ \
+  -tr /path/to/divergence_tree/ \
+  -k /path/to/kraken2_db/ \
   -t 20 \
-  --overlap_filter \
-  --overlap_div_filter \
-  -minIdentity 95
+  -minIdentity 95 \
+  --size-filter 500 \
+  --cluster-size 2500
 ```
 ## Filters
 Filters are described in further detail, and their processes are illustrated in our paper (add cite).
@@ -192,56 +190,55 @@ Filters are described in further detail, and their processes are illustrated in 
 - By examining the species of the query genome and the genome it aligned to, we use the TimeTree of Life to calculate the divergence time between the two species. If the species diverged over 1 million years ago (```divergence >= 1 MYA```), the alignment is retained.
 - This filter is effective at identifying horizontal gene transfer events because MGEs transferred between distantly related species will show high sequence similarity despite ancient species divergence.
 - For detailed information on how this filter detects MGEs, please refer to our paper: (citation tba).
-### Additional filtering
-These filters further refine the alignments that were identified as divergently distant in ```{output_name}_first_div_output.tsv```:
-#### Overlap Filtering
-- Enabling ```--overlap_filter``` produces the file ```{output_name}_overlap.tsv```
-- This filter processes the results from ```{output_name}_first_div_output.tsv```
-- It identifies two alignments that overlap spatially on the query sequence but originate from different species
-- While effective at reducing false positives, it also reduces medival's sensitivity for detecting true MGEs (see paper for details)
-#### Overlap Divergence Filtering
-- Enabling ```--overlap_div_filter``` produces the file ```{output_name}_overlap_div.tsv```
-- This filter processes the results from {output_name}_first_div_output.tsv
--This filter identifies overlapping alignments where the source species are divergently distant (>= 1 MYA) 
-- It is the most stringent filter that effectively reduces false positives but may decrease sensitivity for detecting true MGEs and requires longer processing time.
-- Recommended for high-confidence MGE detection when processing time is not a constraint
+### Overlap-Divergence Filtering (always runs)
+This filter produces ```{output_name}_overlap_div.tsv```:
+- Finds pairs of BLAT hits that overlap on the query sequence and whose reference sequences are divergently distant from each other (≥ 1 MYA), or have ANI < 95% when divergence is unknown.
+- Removes false positives caused by self-alignments or hits from closely related organisms.
+- ANI between reference sequence pairs is looked up in a pre-computed all-vs-all skani triangle (```skani_triangle_ani95.pkl```), making this filter much faster than per-hit skani calls.
 
-### Standard Output (with remove enabled, and all filtering options on):
+### Size and Cluster Filtering (always runs)
+Final regions are built from the overlap-div output:
+- Intervals within `--cluster-size` bp of each other are merged (default: 2500 bp)
+- Regions smaller than `--size-filter` bp are discarded (default: 250 bp)
+- Produces ```{output_name}_final_regions.tsv``` and ```{output_name}_final_regions_summary.tsv```
+
+### Output Files
 ```
 output_directory/
-├── output_name_blat_results.tsv      # Raw BLAT alignments
-├── output_name_first_div_output.tsv    # Divergence-filtered results
-├── output_name_overlap.tsv           # Overlap-filtered results (if enabled)
-└── output_name_overlap_div.tsv       # Overlap+divergence filtered (if enabled)
+├── output_name_blat_results.tsv           # Raw BLAT alignments (all chunks combined)
+├── output_name_first_div_output.tsv       # Divergence-filtered results
+├── output_name_overlap_div.tsv            # Overlap + divergence filtered results
+├── output_name_final_regions.tsv          # Final MGE regions (size + cluster filtered)
+├── output_name_final_regions_summary.tsv  # Per-region summary statistics
+├── skani_ani_dict_*.pkl                   # Cached skani query-vs-reference ANI results
+├── species_*.tsv                          # Auto-detected species assignments
+└── intermediate_{output_name}_files/      # Per-chunk intermediate files
+    ├── chunk_0_{name}/                    # Raw .psl files from BLAT
+    │   ├── chunk_0_{name}_part_0.psl
+    │   ...
+    │   └── chunk_0_{name}_part_136.psl
+    ├── chunk_0_{name}_blat_output.tsv     # Combined BLAT output for this chunk
+    ├── chunk_0_{name}_first_div_output.tsv
+    ├── chunk_0_{name}_overlap_div.tsv
+    ...
 ```
+The `intermediate_{output_name}_files/` directory holds per-chunk working files. The GTDB-BLAT database is split into 136 parts for parallel processing; each chunk of the query is run against all 136 parts, and the results are combined before filtering. Once you are satisfied with your results, you can safely **delete the intermediate directory** to free disk space.
 
-#### Example output (with remove disabled, and all filtering options on):
-```
-medival_test_results_test/
-├── chunk_0_test
-│   ├── chunk_0_test_part_0.psl
-....
-│   └── chunk_0_test_part_136.psl
-├── chunk_1_test
-│   ├── chunk_1_test_part_0.psl
-....
-│   └── chunk_1_test_part_136.psl
-.....
-├── chunk_0_test_blat_output.tsv
-├── chunk_0_test_first_div_output.tsv
-├── chunk_0_test_overlap_div.tsv
-├── chunk_0_test_overlap.tsv
-├── chunk_1_test_blat_output.tsv
-├── chunk_1_test_first_div_output.tsv
-├── chunk_1_test_overlap_div.tsv
-├── chunk_1_test_overlap.tsv
-.....
-├── medival_test_results_test_blat_results.tsv
-├── medival_test_results_test_first_div_output.tsv
-├── medival_test_results_test_overlap_div.tsv
-└── medival_test_results_test_overlap.tsv
-```
-chunk\_{i}\_{output_name} is the directory that will contain all of the raw BLAT output that is run on that chunk of the input sequence. The GTDB-BLAT database is split into 136 pieces to enable efficient parallelization of BLAT. The results are combined, and filtering is done separately for each chunk, generating chunk\_{i}_\{output_name}\_{output or filter type}.tsv for each chunk. Then, at the very end, all chunks are combined into the final output files described below.
+All output files begin with a `#`-prefixed configuration header recording the parameters and timestamp of the run.
+
+**`final_regions.tsv`** contains one row per final MGE region. Reference metadata columns (T name, Divergence Time, etc.) are merged using `|` as a row delimiter and `,` within a row — each `|`-delimited token represents one contributing overlap-div hit (which itself is a pair of reference sequences). To recover individual contributing hits, split on `|`.
+
+**`final_regions_summary.tsv`** contains one row per region with the following columns:
+
+| Column | Description |
+|--------|-------------|
+| `Q name` | Query sequence identifier |
+| `Q size` | Full length of the query sequence (bp) |
+| `Q start` / `Q end` | Coordinates of the final region on the query |
+| `Query Species` | Species of the query sequence |
+| `Num Regions` | Number of overlap-div hits that were merged into this region |
+| `Num Unique Species` | Number of distinct reference species (by tree leaf name) that contributed hits |
+| `Avg Divergence Time` | Average divergence time (MYA) across all contributing hits with a known divergence |
 
 ### Resume Functionality
 Important: The program is designed to resume from interruptions by checking for existing files. If a run is stopped prematurely, it will restart from where it left off. Avoid creating files with names that could overlap with medival's output to prevent conflicts.
@@ -267,15 +264,16 @@ kraken2-build --build --db kraken2_custom_db
 kraken2-build --clean --db kraken2_custom_db
 ```
 
-#### Pre-build GTDB-Blat Database
-We provide a ready-to-use BLAT-compatible database created from the Genome Taxonomy Database (GTDB):
-- **Database:** ```medival_gtdb_db/blat_2bit_db```
-- **Index:** ```medival_gtdb_db/medival_gtdb_2bil_index.pkl```
+#### Pre-built GTDB Database
+We provide a ready-to-use database built from the Genome Taxonomy Database (GTDB):
+- **BLAT database:** ```medival_gtdb_db/blat_2bit_db/```
+- **Index:** ```medival_gtdb_db/medival_db_index.pkl```
+- **skani sketches:** ```medival_gtdb_db/skani_sketch_db/```
+- **skani triangle:** ```medival_gtdb_db/skani_triangle_ani95.pkl```
 
-### Creating a Custom Blat database
--  If you wish to create your own database and index, follow these steps:
-#### Step 1: Build the Blat and Skani database
-The database must be in 2bit format with a maximum of ~2 billion base pairs per file. We recommend a size of 2 billion base pairs.
+### Creating a Custom Database
+If you want to use your own genome collection, follow these steps:
+#### Step 1: Build the BLAT and skani databases
 ```
 python3 make_medival_db.py [fasta_file] [output_name] [size_in_bil_bp]
 ```
@@ -284,12 +282,10 @@ For example:
 python3 make_medival_db.py gtdb.fa medival_gtdb_db 2
 ```
 This script will:
-- Generate a file (output_name/seq_lengths.tsv) that contains the lengths of all sequences in your input fasta file
-- Split the multifasta file into chunks of specified size
-- Convert split files to 2bit format
-- Generate .ooc files for all 2bit files
-- Ensure each .2bit file has a matching .ooc file
-- Split every individual sequence into a separate file for quick use for calculating ani.
+- Split the input FASTA into chunks of the specified size (in billions of bp)
+- Convert each chunk to 2bit format and generate `.ooc` files
+- Run `skani sketch` on all sequences to create the sketch database
+- Run `skani triangle` to compute all-vs-all ANI ≥ 95% pairs and save as `skani_triangle_ani95.pkl`
 #### Step 2: Extract Species Information
 Classify sequences using Kraken2:
 ```
@@ -323,20 +319,26 @@ We use the Time Tree of Life to calculate divergence times between species. From
 ) to allow finding the closest common ancestor in O(1) time. If a new .nwk file from the Time Tree becomes available, this notebook can be used to generate updated indexes and preprocess the tree for efficient queries. (cite timetree)
 
 ## Performance Tips
-1. Use Multiple Threads: Set -t to utilize available CPU cores (We use 46 in experimentation, although thread use will depend on one's resources.)
-2. Optimal Chunk Size: Default 100kb works well; adjust based on sequence lengths. Increasing chunk size will significantly slow down the program.
-3. Enable Filtering: Enabling overlap and overlap divergence filters will decrease false positives, but will also cause medival to miss more MGEs. Overlap divergence takes a very long time to run.
-4. Monitor Resources: Large databases require substantial RAM
-5. Resume Feature: Take advantage of the resume capability for long runs
+1. **Use many threads:** `-t 46` or higher significantly speeds up BLAT and skani steps.
+2. **Chunk size:** The default 100 kb works well. Increasing it slows BLAT substantially.
+3. **Re-runs are fast:** The skani ANI dict and species file are cached in the output directory; re-running with different `--size-filter` or `--cluster-size` values reuses all intermediate files and completes quickly.
+4. **Disk space:** Intermediate files can be large for long sequences. Once you are satisfied with your results, delete the `intermediate_{output_name}_files/` directory to free disk space.
+5. **Resume feature:** Take advantage of the automatic resume capability — re-running the same command after an interruption picks up from where it left off.
 
 ## Workflow
-**Input Processing:** Reads FASTA sequences and (if not specified by the user) determines species classification via Kraken2
+**Species detection:** Determines query species via Kraken2 (unless provided by `-s` or `--speciesFile`). Results are saved and reused on subsequent runs.
 
-**Chunking:** Splits sequences larger than chunk size into manageable pieces
+**skani search:** Queries all input sequences against the skani sketch database to identify reference sequences with ≥ 95% ANI. Results are cached and reused.
 
-**Parallel BLAT Search:** Runs BLAT searches against database files using multiple threads
+**Chunking:** Splits sequences longer than `--chunk` bp into manageable pieces.
 
-**Filtering Pipeline:** Applies divergence and other specified filters
+**Parallel BLAT:** Each chunk is run against all 136 BLAT database parts in parallel.
+
+**Divergence filter:** Retains hits where query and reference species diverged ≥ 1 MYA. Uses cached skani ANI as a fallback when divergence is unknown.
+
+**Overlap-divergence filter:** Identifies overlapping hit pairs whose reference sequences are from divergent lineages. Always runs.
+
+**Size + cluster filter:** Merges nearby regions and removes small ones to produce the final MGE calls.
 
 
 ## Citation
