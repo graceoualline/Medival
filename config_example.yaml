@@ -17,3 +17,5 @@ minScore: 30 # Is the minimum alignment score threshold, sets blat's parameter -
 minIdentity: 0 # Is the threshold of the minimum percent identity a hit must have. Default: 95. Percent identity = ( match / Q_end - Q_start )*100
 overlap_filter: true # Is false when you do not want to also do an overlap filter
 overlap_div_filter: true # is false when you do not want to do an overlap and divergence filter
+size_filter: 250 # Filter out any regions smaller than __ bp. Default: 250
+cluster_size: 2500 # Combine any regions that are within ___ bp of eachother. Default: 2500

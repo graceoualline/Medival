@@ -68,7 +68,7 @@ def make_seq_id_species_txt(seq_file, output, kraken_db):
     command = [
         "kraken2", "--db", kraken_db, "--output", kraken_output, "--use-names", seq_file
     ]
-    print(command)
+    #print(command)
     try:
         #run the command
         print("Running Kraken on", seq_file)

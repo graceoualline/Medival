@@ -7,7 +7,7 @@ import glob
 import sys
 import os
 
-def adjust_and_merge_tsvs(chunk_dir, chunk_size, output_file, to_combine):
+def adjust_and_merge_tsvs(chunk_dir, chunk_size, output_file, to_combine, config_header=''):
     #ex to_combine = *first_div_output.tsv
     all_files = sorted(glob.glob(os.path.join(chunk_dir, "*" + to_combine)))
     #print(chunk_dir)
@@ -51,7 +51,12 @@ def adjust_and_merge_tsvs(chunk_dir, chunk_size, output_file, to_combine):
             # Read just the header from the first available file
             try:
                 empty_df = pd.read_csv(all_files[0], sep='\t', nrows=0)
-                empty_df.to_csv(output_file, sep='\t', index=False)
+                if config_header:
+                    with open(output_file, 'w') as f:
+                        f.write(config_header)
+                    empty_df.to_csv(output_file, sep='\t', index=False, mode='a')
+                else:
+                    empty_df.to_csv(output_file, sep='\t', index=False)
                 return all_files
             except Exception as e:
                 print(f"Could not extract headers from {all_files[0]}: {e}")
@@ -59,12 +64,17 @@ def adjust_and_merge_tsvs(chunk_dir, chunk_size, output_file, to_combine):
         else:
             print("No source files found at all. Nothing to write.")
             return []
-        
+
     final_df = pd.concat(dfs, ignore_index=True)
 
     # Save
     try:
-        final_df.to_csv(output_file, sep='\t', index=False)
+        if config_header:
+            with open(output_file, 'w') as f:
+                f.write(config_header)
+            final_df.to_csv(output_file, sep='\t', index=False, mode='a')
+        else:
+            final_df.to_csv(output_file, sep='\t', index=False)
         print(f"Combined file written to {output_file}")
         return all_files
     except:

@@ -18,15 +18,17 @@ class Config:
     remove: bool # is false when I am debugging and dont want files to be deleted
     species: str # user defined species of all of the sequences given in a query
     minScore: int # Is the minimum alignment score threshold, sets blat's parameter -minScore, default 30
-    minIdentity: int # Is the threshold of the minimum percent identity a hit must have. Default: 95. Percent identity = ( match / Q_end - Q_start )*100
-    overlap_filter: bool # Is false when you do not want to also do an overlap filter
+    minIdentity: int # Is the threshold of the minimum percent identity a hit must have. Default: 90. Percent identity = ( match / Q_end - Q_start )*100
     overlap_div_filter: bool # is false when you do not want to do an overlap and divergence filter
     speciesFile: str # is a file that defines the species of every sequence in the fasta file
     species_mode: str # code defined mode to help know how species are being defined
     seq_species_dict: str # if file given, the dictionary created relating dict[seq_id]: species
     intermediate_dir: str # the directory that will contain intermediate files that are used to build the final files
+    size_filter: int # Filter out any regions smaller than this many bp
+    cluster_size: int # Combine any regions within this many bp of each other
     skani_ani_dict: Dict[str, List[str]] = field(default_factory=dict) # query_id -> ref_ids with >= 95% ANI
     skani_triangle_dict: Dict = field(default_factory=dict) # (min_id, max_id) -> ANI for all db pairs >= 95%
+    config_header: str = ''
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -70,7 +72,11 @@ def parse_args():
     parser.add_argument(
         "-minScore", type = int, help = "(Optional) Minimum alignment score threshold for blat (default: 30)")
     parser.add_argument(
-        "-minIdentity", type = int, help = "(Optional) Minimum percent identity threshold (default: 0). Percent identity = ( match / Q_end - Q_start )*100")
+        "-minIdentity", type = int, help = "(Optional) Minimum percent identity threshold (default: 90). Percent identity = ( match / Q_end - Q_start )*100")
+    parser.add_argument(
+        "--size-filter", dest="size_filter", type=int, help="(Optional) Filter out any regions smaller than this many bp (default: 250)")
+    parser.add_argument(
+        "--cluster-size", dest="cluster_size", type=int, help="(Optional) Combine any regions within this many bp of each other (default: 2500)")
 
     # BooleanOptionalAction
     class BooleanOptionalAction(argparse.Action):
@@ -105,14 +111,6 @@ def parse_args():
     )
     
     parser.add_argument(
-        "--overlap-filter",
-        dest="overlap_filter",
-        action=BooleanOptionalAction,
-        default=None,
-        help="(Optional), Enable overlap filter (default: False). Use --overlap-filter to enable, --no-overlap-filter to disable."
-    )
-    
-    parser.add_argument(
         "--overlap-div-filter", 
         dest="overlap_div_filter",
         action=BooleanOptionalAction,
@@ -143,7 +141,8 @@ def validate_config_keys(config_data):
     valid_keys = {
         'query', 'output', 'database', 'tree', 'index', 'kraken',
         'threads', 'chunk', 'remove', 'species', 'minScore', 'minIdentity',
-        'overlap_filter', 'overlap_div_filter', "speciesFile"
+        'overlap_div_filter', "speciesFile",
+        'size_filter', 'cluster_size'
     }
     
     # Check for unrecognized keys
@@ -161,7 +160,7 @@ def validate_config_keys(config_data):
         raise ValueError(f"Invalid config file parameters: {', '.join(sorted(unrecognized_keys))}")
     
     # Optionally, validate boolean values in config
-    bool_keys = {'remove', 'overlap_filter', 'overlap_div_filter'}
+    bool_keys = {'remove', 'overlap_div_filter'}
     for key in bool_keys:
         if key in config_data:
             value = config_data[key]
@@ -171,7 +170,7 @@ def validate_config_keys(config_data):
                 raise ValueError(f"Config parameter '{key}' has invalid boolean value: '{value}'. Use true/false, yes/no, 1/0, or on/off")
     
     # Validate integer parameters
-    int_keys = {'threads', 'chunk', 'minScore', 'minIdentity'}
+    int_keys = {'threads', 'chunk', 'minScore', 'minIdentity', 'size_filter', 'cluster_size'}
     for key in int_keys:
         if key in config_data:
             value = config_data[key]
@@ -250,9 +249,10 @@ def merge_config_and_args(args, config_data=None):
         'species': ('species', None),
         'speciesFile': ('speciesFile', None),
         'minScore': ('minScore', 30),
-        'minIdentity': ('minIdentity', 0),
-        'overlap_filter': ('overlap_filter', False),
+        'minIdentity': ('minIdentity', 90),
         'overlap_div_filter': ('overlap_div_filter', False),
+        'size_filter': ('size_filter', 250),
+        'cluster_size': ('cluster_size', 2500),
         'seq_species_dict': ('seq_species_dict', None),
     }
     
@@ -270,7 +270,7 @@ def merge_config_and_args(args, config_data=None):
         else:
             merged_config[config_key] = config_value
     
-    bool_params = ['remove', 'overlap_filter', 'overlap_div_filter']
+    bool_params = ['remove', 'overlap_div_filter']
     for param in bool_params:
         value = merged_config[param]
         if isinstance(value, str):
@@ -317,7 +317,7 @@ def validate_required_params(config_dict):
         print("If you want us to automatically assign species, leave both undefined.")
         return False
 
-    species_output_file = f"{config_dict['output']}/species_{config_dict['output']}_{Path(config_dict['query']).stem}.tsv"
+    species_output_file = f"{config_dict['output']}/species_{Path(config_dict['query']).stem}.tsv"
     
     # Determine species handling mode
     if species is None and speciesFile is None:
@@ -341,3 +341,14 @@ def validate_required_params(config_dict):
         config_dict['seq_species_dict'] = species_seq_dict(config_dict['speciesFile'])
 
     return True
+
+
+def format_config_header(config_dict):
+    """Return a # comment block summarising the run configuration."""
+    skip = {'seq_species_dict'}
+    lines = ['# MEDIVAL run configuration']
+    for key, val in config_dict.items():
+        if key not in skip:
+            lines.append(f'# {key}: {val}')
+    lines.append('#')
+    return '\n'.join(lines) + '\n'
