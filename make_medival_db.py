@@ -475,8 +475,8 @@ def make_ooc(input_directory):
     print(f"Generated OOC files for {total_files} 2bit files")
 
 if __name__ == "__main__":
-    if len(sys.argv) != 5:
-        print("Usage: python make_medival_db.py <input.fasta> <output_dir> <max_bil_bp> <threads>")
+    if len(sys.argv) < 4:
+        print("Usage: python make_medival_db.py <input.fasta> <output_dir> <max_bil_bp> [threads]")
         sys.exit(1)
     print("Started")
     input_fasta = sys.argv[1] #full_database = "/usr1/shared/gtdb_combined.fa"
@@ -491,7 +491,8 @@ if __name__ == "__main__":
             os.makedirs(d)
     
     max_bp = int(float(sys.argv[3]) * 1000000000)
-    threads = int(sys.argv[4])
+    if len(sys.argv) > 4: threads = int(sys.argv[4])
+    else: threads = 1
     og_dir = os.getcwd()
     print("Loaded")
     seq_lengths = Path(f"{output_dir}/seq_lengths.tsv")

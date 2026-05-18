@@ -32,16 +32,13 @@ def _init_worker(tree_dir, index_path):
     sys.stdout = sys.__stdout__
     devnull.close()
 
-# surpressed what workers are printing out
+# Suppress stdout inside a thread without touching the global sys.stdout.
+# Using contextlib.redirect_stdout + io.StringIO is thread-safe because each
+# call gets its own StringIO and redirect_stdout uses a thread-local slot.
+import io, contextlib
 def _suppress_stdout(func, args):
-    old_stdout = sys.stdout
-    devnull = open(os.devnull, 'w')
-    sys.stdout = devnull
-    try:
+    with contextlib.redirect_stdout(io.StringIO()):
         return func(args)
-    finally:
-        sys.stdout = old_stdout
-        devnull.close()
 
 def combine_and_cleanup_psl_files(args):
     header_lines = 5
@@ -555,5 +552,11 @@ def main():
     print("MEDIVAL FINISHED")
 
     print("Endtime time:", datetime.now())
-    
-main()
+
+if __name__ == '__main__':
+    # Force fork on Python 3.14+ where forkserver became the default on Linux.
+    # Workers must inherit _worker_tree / _worker_index / _worker_triangle_dict
+    # via copy-on-write — that only works with fork, not spawn/forkserver.
+    import multiprocessing
+    multiprocessing.set_start_method('fork', force=True)
+    main()

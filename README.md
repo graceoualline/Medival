@@ -275,7 +275,7 @@ We provide a ready-to-use database built from the Genome Taxonomy Database (GTDB
 If you want to use your own genome collection, follow these steps:
 #### Step 1: Build the BLAT and skani databases
 ```
-python3 make_medival_db.py [fasta_file] [output_name] [size_in_bil_bp]
+python3 make_medival_db.py [fasta_file] [output_name] [size_in_bil_bp] [threads (optional, default 1)]
 ```
 For example:
 ```
