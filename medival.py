@@ -216,13 +216,15 @@ def combine_all_results(c: Config):
                 for _ in pool.imap_unordered(run_combine_results, jobs):
                     pbar.update()
 
-    input_path = os.path.join(c.output_dir, f"{output_name}_overlap_div.tsv")
     medival_final_name = os.path.join(c.output_dir, f"{output_name}_final_regions.tsv")
     medival_summary_final_name = os.path.join(c.output_dir, f"{output_name}_final_regions_summary.tsv")
     if os.path.exists(medival_summary_final_name) and os.path.exists(medival_final_name):
         print(f"Skipping {medival_final_name}, {medival_summary_final_name}, already exist.")
     else:
-        size_filter_cluster(input_path, medival_final_name, medival_summary_final_name, c.size_filter, c.cluster_size, False, c.index, c.config_header)
+        print("Creating final result files")
+        size_filter_cluster_from_chunks(c.intermediate_dir, c.chunk_size, medival_final_name,
+                                        medival_summary_final_name, c.size_filter, c.cluster_size,
+                                        False, c.index, c.config_header)
 
 
 def write_species_to_file(sequence_id, species, species_file, mode='a'):

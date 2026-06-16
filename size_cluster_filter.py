@@ -226,8 +226,122 @@ def size_filter_cluster(input_path, output_path, summary_path, min_size, gap,
     summary_rows = []
     for q_name, ivs in groups.items():
         for iv in process(ivs, min_size, gap):
+            summary_row = format_summary_row(q_name, iv, index)
+            if summary_row['Num Unique Species'] <= 1:
+                continue
             rows_out.append(format_row(q_name, iv, available_cols, test_set, plasmid_regions))
-            summary_rows.append(format_summary_row(q_name, iv, index))
+            summary_rows.append(summary_row)
+
+    if config_header:
+        with open(output_path, 'w') as f:
+            f.write(config_header)
+        pd.DataFrame(rows_out, columns=out_cols).to_csv(output_path, sep='\t', index=False, mode='a')
+    else:
+        pd.DataFrame(rows_out, columns=out_cols).to_csv(output_path, sep='\t', index=False)
+    print(f"  {len(rows_out)} interval(s) written to: {output_path}")
+
+    if config_header:
+        with open(summary_path, 'w') as f:
+            f.write(config_header)
+        pd.DataFrame(summary_rows, columns=_SUMMARY_COLS).to_csv(summary_path, sep='\t', index=False, mode='a')
+    else:
+        pd.DataFrame(summary_rows, columns=_SUMMARY_COLS).to_csv(summary_path, sep='\t', index=False)
+    print(f"  summary written to: {summary_path}")
+
+
+def load_data_from_chunks(chunk_dir, chunk_size):
+    """
+    Load all *_overlap_div.tsv files from chunk_dir, applying the chunk coordinate
+    offset (chunk_index * chunk_size) to Q start / Q end in-place.
+    Returns the same (groups, plasmid_regions) structure as load_data().
+    """
+    import glob
+    groups = {}
+    plasmid_regions = {}
+
+    chunk_files = sorted(glob.glob(os.path.join(chunk_dir, "*_overlap_div.tsv")))
+    print(f"  Found {len(chunk_files)} chunk overlap_div files")
+
+    for filepath in chunk_files:
+        fname = os.path.basename(filepath)
+        try:
+            idx = int(fname.split("_")[1])
+        except (IndexError, ValueError):
+            print(f"  Warning: could not parse chunk index from {fname}, skipping")
+            continue
+        offset = idx * chunk_size
+
+        try:
+            df = pd.read_csv(filepath, sep='\t', on_bad_lines='skip', dtype=str, comment='#')
+        except Exception as e:
+            print(f"  Warning: could not read {filepath}: {e}")
+            continue
+        df.columns = df.columns.str.strip()
+        df.drop(columns=[c for c in _BLAT_ONLY_COLS if c in df.columns], inplace=True)
+        if df.empty:
+            continue
+
+        if offset > 0:
+            df['Q start'] = pd.to_numeric(df['Q start'], errors='coerce').fillna(0).astype(int) + offset
+            df['Q end']   = pd.to_numeric(df['Q end'],   errors='coerce').fillna(0).astype(int) + offset
+        else:
+            df['Q start'] = pd.to_numeric(df['Q start'], errors='coerce').fillna(0).astype(int)
+            df['Q end']   = pd.to_numeric(df['Q end'],   errors='coerce').fillna(0).astype(int)
+
+        for row in df.to_dict('records'):
+            q_name  = str(row['Q name'])
+            q_start = int(row['Q start'])
+            q_end   = int(row['Q end'])
+
+            parts = q_name.split(',')
+            if len(parts) == 4:
+                plasmid_regions[q_name] = (int(parts[1]), int(parts[2]))
+
+            groups.setdefault(q_name, []).append(
+                {'start': q_start, 'end': q_end, 'rows': [row]}
+            )
+
+    return groups, plasmid_regions
+
+
+def size_filter_cluster_from_chunks(chunk_dir, chunk_size, output_path, summary_path,
+                                     min_size, gap, test_set=False, index_path=None,
+                                     config_header=''):
+    """
+    Like size_filter_cluster() but reads directly from per-chunk overlap_div files
+    instead of one large combined file, avoiding the 900 MB+ memory spike.
+    """
+    print(f"Loading chunks from: {chunk_dir}")
+    index = load_hash_table(index_path)
+    groups, plasmid_regions = load_data_from_chunks(chunk_dir, chunk_size)
+    print(f"  {len(groups)} sequence(s) | size >= {min_size} bp | gap <= {gap} bp")
+
+    # Infer available columns from the first chunk file
+    import glob
+    available_cols = set()
+    for fp in sorted(glob.glob(os.path.join(chunk_dir, "*_overlap_div.tsv"))):
+        try:
+            available_cols = set(
+                pd.read_csv(fp, sep='\t', nrows=0, comment='#').columns.str.strip()
+            )
+            break
+        except Exception:
+            continue
+
+    meta_present = [c for c in _META_COLS if c in available_cols]
+    fixed_cols = ['Q name', 'Q size', 'Q start', 'Q end', 'Query Species']
+    test_cols  = ['bp_in_mge', 'bp_in_host'] if test_set else []
+    out_cols   = fixed_cols + meta_present + test_cols
+
+    rows_out = []
+    summary_rows = []
+    for q_name, ivs in groups.items():
+        for iv in process(ivs, min_size, gap):
+            summary_row = format_summary_row(q_name, iv, index)
+            if summary_row['Num Unique Species'] <= 1:
+                continue
+            rows_out.append(format_row(q_name, iv, available_cols, test_set, plasmid_regions))
+            summary_rows.append(summary_row)
 
     if config_header:
         with open(output_path, 'w') as f:
