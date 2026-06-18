@@ -378,7 +378,7 @@ def prepare_jobs_parallel(c: Config, n_processes=None):
         with open(skani_pkl, "rb") as f:
             skani_ani_dict = pickle.load(f)
     else:
-        skani_tsv = os.path.join(c.output_dir, f"skani_search_{c.input_fasta.split('/')[-1].split('.')[0]}_95ani.tsv")
+        skani_tsv = os.path.join(c.output_dir, f"skani_search_{Path(c.input_fasta).stem}_95ani.tsv")
 
         if not os.path.exists(skani_tsv):
             print("\nRunning skani search to find sequences with >= 95% ANI matches...")
