@@ -138,7 +138,6 @@ def run_all_filters(chunk_jobs, c: Config):
             with tqdm(total=len(filter_jobs), desc="Running chunks through overlap div filter") as pbar:
                 for _ in pool.imap_unordered(run_specified_filter, filter_jobs):
                     pbar.update()
-    print("All filters complete")
     
 def run_blat(args):
     blat_dir, blat_file, ooc_file, query, output_path, minScore = args
@@ -221,10 +220,9 @@ def combine_all_results(c: Config):
     if os.path.exists(medival_summary_final_name) and os.path.exists(medival_final_name):
         print(f"Skipping {medival_final_name}, {medival_summary_final_name}, already exist.")
     else:
-        print("Creating final result files")
         size_filter_cluster_from_chunks(c.intermediate_dir, c.chunk_size, medival_final_name,
                                         medival_summary_final_name, c.size_filter, c.cluster_size,
-                                        False, c.index, c.config_header)
+                                        c.index, c.config_header)
 
 
 def write_species_to_file(sequence_id, species, species_file, mode='a'):
@@ -371,14 +369,16 @@ def prepare_jobs_parallel(c: Config, n_processes=None):
         print(f"Using species assignments from: {c.speciesFile} (updated with auto-detected entries)")
     
     # Run skani search to find all reference sequences with >= 95% ANI to each query
-    skani_pkl = os.path.join(c.output_dir, f"skani_ani_dict_{c.input_fasta.split("/")[-1].split(".")[0]}.pkl")
+    
+
+    skani_pkl = os.path.join(c.output_dir, f"skani_ani_dict_{Path(c.input_fasta).stem}.pkl")
 
     if os.path.exists(skani_pkl):
         print(f"Skipping skani search: {skani_pkl} already exists. Loading...")
         with open(skani_pkl, "rb") as f:
             skani_ani_dict = pickle.load(f)
     else:
-        skani_tsv = os.path.join(c.output_dir, f"skani_search_{c.input_fasta.split("/")[-1].split(".")[0]}_95ani.tsv")
+        skani_tsv = os.path.join(c.output_dir, f"skani_search_{c.input_fasta.split('/')[-1].split('.')[0]}_95ani.tsv")
 
         if not os.path.exists(skani_tsv):
             print("\nRunning skani search to find sequences with >= 95% ANI matches...")

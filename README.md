@@ -132,8 +132,8 @@ python3 /usr1/gouallin/blat/blat_pipeline/medival.py \
 | `--speciesFile` | auto-detect | Tab-separated file assigning a species to each sequence ID. Cannot be used with `-s`. |
 | `-minScore` | 30 | Minimum BLAT alignment score. |
 | `-minIdentity` | 90 | Minimum percent identity: `(matches / (Q_end − Q_start)) × 100`. |
-| `--size-filter` | 250 | Discard final regions smaller than this many bp. |
-| `--cluster-size` | 2500 | Merge final regions within this many bp of each other. |
+| `--size-filter` | 150 | Discard final regions smaller than this many bp. |
+| `--cluster-size` | 0 | Merge final regions within this many bp of each other. |
 
 #### Config File
 Create a YAML configuration file for repeated analyses:
@@ -150,8 +150,8 @@ threads: 20
 chunk: 100000
 minScore: 30
 minIdentity: 90
-size_filter: 250
-cluster_size: 2500
+size_filter: 150
+cluster_size: 0
 species: Null          # Null = auto-detect with Kraken2
 speciesFile: Null      # Null = auto-detect with Kraken2
 index: Null            # Null = use index bundled in database
@@ -180,8 +180,7 @@ python3 medival.py \
   -k /path/to/kraken2_db/ \
   -t 20 \
   -minIdentity 95 \
-  --size-filter 500 \
-  --cluster-size 2500
+  --size-filter 150
 ```
 ## Filters
 Filters are described in further detail, and their processes are illustrated in our paper (add cite).
@@ -198,7 +197,7 @@ This filter produces ```{output_name}_overlap_div.tsv```:
 
 ### Size and Cluster Filtering (always runs)
 Final regions are built from the overlap-div output:
-- Intervals within `--cluster-size` bp of each other are merged (default: 2500 bp)
+- Intervals within `--cluster-size` bp of each other are merged (default: 0 bp)
 - Regions smaller than `--size-filter` bp are discarded (default: 250 bp)
 - Produces ```{output_name}_final_regions.tsv``` and ```{output_name}_final_regions_summary.tsv```
 

@@ -15,4 +15,4 @@ speciesFile: Null # if there are multiple species in one fasta file, this is a t
 minScore: 30 # Is the minimum alignment score threshold, sets blat's parameter -minScore, default 30
 minIdentity: 0 # Is the threshold of the minimum percent identity a hit must have. Default: 95. Percent identity = ( match / Q_end - Q_start )*100
 size_filter: 250 # Filter out any regions smaller than __ bp. Default: 250
-cluster_size: 2500 # Combine any regions that are within ___ bp of eachother. Default: 2500
+cluster_size: 0 # Combine any regions that are within ___ bp of eachother. Default: 0

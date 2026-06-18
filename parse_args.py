@@ -73,9 +73,9 @@ def parse_args():
     parser.add_argument(
         "-minIdentity", type = int, help = "(Optional) Minimum percent identity threshold (default: 90). Percent identity = ( match / Q_end - Q_start )*100")
     parser.add_argument(
-        "--size-filter", dest="size_filter", type=int, help="(Optional) Filter out any regions smaller than this many bp (default: 250)")
+        "--size-filter", dest="size_filter", type=int, help="(Optional) Filter out any regions smaller than this many bp (default: 150)")
     parser.add_argument(
-        "--cluster-size", dest="cluster_size", type=int, help="(Optional) Combine any regions within this many bp of each other (default: 2500)")
+        "--cluster-size", dest="cluster_size", type=int, help="(Optional) Combine any regions within this many bp of each other (default: 0)")
 
     return parser.parse_args()
 
@@ -197,8 +197,8 @@ def merge_config_and_args(args, config_data=None):
         'speciesFile': ('speciesFile', None),
         'minScore': ('minScore', 30),
         'minIdentity': ('minIdentity', 90),
-        'size_filter': ('size_filter', 250),
-        'cluster_size': ('cluster_size', 2500),
+        'size_filter': ('size_filter', 150),
+        'cluster_size': ('cluster_size', 0),
         'seq_species_dict': ('seq_species_dict', None),
     }
     
