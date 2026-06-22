@@ -9,7 +9,7 @@ channels:
   - defaults
 dependencies:
   # Python
-  - python>=3.9
+  - python>=3.9,<3.13
 
   # Third-party Python packages
   - biopython
@@ -23,4 +23,4 @@ dependencies:
   - blat
   - ucsc-fatotwobit
   - kraken2
-  - skani
+  - skani=0.2.1
