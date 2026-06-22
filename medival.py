@@ -479,7 +479,7 @@ def main():
         seq_species_dict = merged_config["seq_species_dict"],
         size_filter = merged_config["size_filter"],
         cluster_size = merged_config["cluster_size"],
-        intermediate_dir=os.path.join(merged_config['output'], f"intermediate_{merged_config['output']}_files")
+        intermediate_dir=os.path.join(merged_config['output'], f"intermediate_{os.path.basename(merged_config['output'].rstrip(os.sep))}_files")
     )
     c.config_header = format_config_header(merged_config)
 
